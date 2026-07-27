@@ -354,6 +354,3 @@ to sign up at https://www.firecrawl.dev/signin.
 
 Use this API key for this onboarding session:
 
-```dotenv
-FIRECRAWL_API_KEY=fc-c8d268a6b32c425184d3336d8f19bcbd
-```
