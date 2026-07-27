@@ -129,28 +129,27 @@ ${companyContext}
 LOCATION: ${orgData.location}
 KNOWN COMPETITORS: ${orgData.knownCompetitors.join(', ')}
 
-Generate 15 search queries to find:
-1. Direct competitors in their location (PRIORITY: HIGH)
-2. Direct competitors in other countries (PRIORITY: MEDIUM)
-3. Emerging competitors in similar industries (PRIORITY: MEDIUM)
-4. Alternative solutions or substitutes (PRIORITY: LOW)
+Generate 10 search queries to find:
+1. Top direct competitors in ${orgData.location} (PRIORITY: HIGH) - Focus on the market leaders
+2. Key international competitors (PRIORITY: MEDIUM) - Only major players
+3. Focus on quality over quantity - we want the TOP competitors only
 
 IMPORTANT:
-- Prioritize ${orgData.location} based competitors
-- Include international competitors
+- PRIORITIZE ${orgData.location} based competitors (domestic market leaders)
+- Only include major, established competitors
 - Focus on companies offering similar products/services
 - Include specific industry keywords
 
 Return ONLY a JSON array of search queries in this exact format:
 [
   {
-    "query": "top project management software companies ${orgData.location}",
+    "query": "top ${orgData.industry} companies ${orgData.location}",
     "type": "competitor",
     "priority": "high",
     "region": "domestic"
   },
   {
-    "query": "${orgData.industry} startups international",
+    "query": "leading ${orgData.industry} international",
     "type": "competitor",
     "priority": "medium",
     "region": "international"
@@ -202,7 +201,7 @@ Return ONLY valid JSON, no other text.`;
     orgData: { name: string; industry: string; location: string; knownCompetitors: string[] },
     companyContext: string,
   ): Promise<CompetitorInfo[]> {
-    const prompt = `You are a competitive intelligence analyst. Identify competitors for this company.
+    const prompt = `You are a competitive intelligence analyst. Identify the TOP 5 competitors for this company.
 
 COMPANY CONTEXT:
 ${companyContext}
@@ -210,31 +209,43 @@ ${companyContext}
 LOCATION: ${orgData.location}
 KNOWN COMPETITORS: ${orgData.knownCompetitors.join(', ')}
 
-Identify 10-15 competitors:
-- Include all known competitors
-- Add ${orgData.location} based competitors (PRIORITY: domestic)
-- Add major international competitors (PRIORITY: international)
-- Include company websites if possible
+CRITICAL INSTRUCTIONS:
+- Identify EXACTLY 5 competitors total (not more, not less)
+- PRIORITIZE ${orgData.location} based competitors (domestic market leaders FIRST)
+- Only include if ${orgData.location} has fewer than 5 major competitors, then add international leaders
+- Focus on the MOST SIGNIFICANT competitors only (market leaders, not small players)
+- Include accurate company websites
 
-Return ONLY a JSON array in this exact format:
+PRIORITY ORDER:
+1. TOP domestic competitors in ${orgData.location} (highest priority)
+2. Major international competitors (only if needed to reach 5 total)
+
+Return ONLY a JSON array with EXACTLY 5 competitors in this format:
 [
   {
-    "name": "Asana",
-    "website": "https://asana.com",
-    "location": "United States",
-    "description": "Project management and team collaboration tool",
-    "priority": "international"
+    "name": "DomesticLeader1",
+    "website": "https://domesticleader1.com",
+    "location": "${orgData.location}",
+    "description": "Market leader in ${orgData.location}",
+    "priority": "domestic"
   },
   {
-    "name": "LocalCompetitor",
-    "website": "https://localcompetitor.com",
+    "name": "DomesticLeader2",
+    "website": "https://domesticleader2.com",
     "location": "${orgData.location}",
-    "description": "Local competitor description",
+    "description": "Second major player in ${orgData.location}",
     "priority": "domestic"
+  },
+  {
+    "name": "InternationalLeader",
+    "website": "https://internationalleader.com",
+    "location": "Country",
+    "description": "Major international competitor",
+    "priority": "international"
   }
 ]
 
-Return ONLY valid JSON, no other text.`;
+MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
 
     try {
       const completion = await this.groq.chat.completions.create({
@@ -263,12 +274,15 @@ Return ONLY valid JSON, no other text.`;
 
       const competitors: CompetitorInfo[] = JSON.parse(jsonMatch[0]);
 
-      // Sort by priority (domestic first)
-      return competitors.sort((a, b) => {
+      // Sort by priority (domestic first) and limit to top 5
+      const sortedCompetitors = competitors.sort((a, b) => {
         if (a.priority === 'domestic' && b.priority !== 'domestic') return -1;
         if (a.priority !== 'domestic' && b.priority === 'domestic') return 1;
         return 0;
       });
+
+      // Ensure we return exactly 5 competitors (domestic prioritized)
+      return sortedCompetitors.slice(0, 5);
     } catch (error) {
       this.logError('Failed to identify competitors', error);
       // Fallback to known competitors
@@ -444,13 +458,16 @@ Return ONLY valid JSON, no other text.`;
       'Prabhu Pay': 'https://prabhupay.com',
     };
 
-    return orgData.knownCompetitors.map((name) => ({
-      name,
-      website: nepaliCompetitorWebsites[name],
-      priority: 'domestic',
-      location: orgData.location,
-      description: `Digital payment service in Nepal`,
-    }));
+    // Return only top 5 competitors (prioritize domestic)
+    return orgData.knownCompetitors
+      .slice(0, 5) // Take only first 5
+      .map((name) => ({
+        name,
+        website: nepaliCompetitorWebsites[name],
+        priority: 'domestic',
+        location: orgData.location,
+        description: `Digital payment service in ${orgData.location}`,
+      }));
   }
 
   /**
@@ -597,7 +614,7 @@ Return ONLY valid JSON, no other text.`;
   private scoreAndSelectPriorityUrls(
     urls: string[],
     baseUrl: string,
-    maxUrls = 7,
+    maxUrls = 5, // Changed from 7 to 5 for performance
   ): string[] {
     // Define priority keywords with scores
     const priorityPatterns: Array<{ pattern: RegExp; score: number }> = [
