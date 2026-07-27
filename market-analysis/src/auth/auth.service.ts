@@ -125,7 +125,6 @@ export class AuthService {
 
     // Hash password with secure rounds
     const hashedPassword = await bcrypt.hash(registerDto.password, 12);
-    const verificationToken = crypto.randomBytes(32).toString('hex');
     const profilePicture = this.generateGravatarUrl(normalizedEmail);
 
     // Create user (for MVP, we'll skip email verification and set user as active)
@@ -167,15 +166,9 @@ export class AuthService {
   }> {
     const normalizedEmail = loginDto.email.toLowerCase().trim();
 
-    // Fetch user with organizations
+    // Fetch user
     const user = await this.userModel.findOne({
       where: { email: normalizedEmail },
-      include: [
-        {
-          model: Organization,
-          through: { attributes: [] },
-        },
-      ],
     });
 
     if (!user) {
@@ -198,8 +191,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Get organization details
-    const organization = user.organizations && user.organizations.length > 0 ? user.organizations[0] : null;
+    // Get organization details (MVP: direct owner_id lookup)
+    const organization = await this.organizationModel.findOne({
+      where: { owner_id: user.id },
+    });
+
     const organizationId = organization?.id || null;
     const organizationName = organization?.name || null;
     const organizationStatus = organization?.status || null;
@@ -245,17 +241,18 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // Check if user already has an organization
-    const existingMembership = await this.organizationMemberModel.findOne({
-      where: { user_id: userId },
+    // Check if user already has an organization (MVP: one org per user)
+    const existingOrg = await this.organizationModel.findOne({
+      where: { owner_id: userId },
     });
 
-    if (existingMembership) {
-      throw new ConflictException('You are already part of an organization');
+    if (existingOrg) {
+      throw new ConflictException('You already have an organization');
     }
 
-    // Create organization
+    // Create organization with owner_id (simplified MVP model)
     const organization = await this.organizationModel.create({
+      owner_id: userId,
       name: createOrgDto.name,
       description: createOrgDto.description,
       industry: createOrgDto.industry,
@@ -270,7 +267,7 @@ export class AuthService {
       status: OrganizationStatus.PENDING_APPROVAL,
     });
 
-    // Add user as OWNER of the organization
+    // Also create organization_member entry for backward compatibility
     await this.organizationMemberModel.create({
       user_id: userId,
       organization_id: organization.id,
@@ -307,20 +304,16 @@ export class AuthService {
       memberRole: OrgMemberRole;
     } | null;
   }> {
-    const user = await this.userModel.findByPk(userId, {
-      include: [
-        {
-          model: Organization,
-          through: { attributes: ['role'] },
-        },
-      ],
-    });
+    const user = await this.userModel.findByPk(userId);
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const organization = user.organizations && user.organizations.length > 0 ? user.organizations[0] : null;
+    // Get organization directly by owner_id (MVP approach)
+    const organization = await this.organizationModel.findOne({
+      where: { owner_id: userId },
+    });
 
     let organizationData: {
       id: string;
@@ -331,19 +324,12 @@ export class AuthService {
     } | null = null;
 
     if (organization) {
-      const membership = await this.organizationMemberModel.findOne({
-        where: {
-          user_id: userId,
-          organization_id: organization.id,
-        },
-      });
-
       organizationData = {
         id: organization.id,
         name: organization.name,
         status: organization.status,
         industry: organization.industry,
-        memberRole: membership?.role || OrgMemberRole.MEMBER,
+        memberRole: OrgMemberRole.OWNER, // MVP: user is always owner of their org
       };
     }
 

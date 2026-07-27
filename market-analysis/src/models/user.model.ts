@@ -70,6 +70,9 @@ export class User extends Model {
   declare updated_at: Date;
 
   // ASSOCIATIONS
+  @HasMany(() => Organization, { foreignKey: 'owner_id' })
+  declare ownedOrganizations: Organization[];
+
   @HasMany(() => OrganizationMember)
   declare organizationMemberships: OrganizationMember[];
 

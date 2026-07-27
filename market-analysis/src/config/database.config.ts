@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { User } from '../models/user.model';
 import { Organization } from '../models/organization.model';
 import { OrganizationMember } from '../models/organizationMember.model';
+import { ResearchJob } from '../models/research-job.model';
+import { ResearchSource } from '../models/research-source.model';
 
 export const getDatabaseConfig = (configService: ConfigService): SequelizeModuleOptions => {
   const databaseUrl = configService.get<string>('DATABASE_URL');
@@ -24,7 +26,7 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
           rejectUnauthorized: false, // Required for Neon and most cloud PostgreSQL providers
         },
       },
-      models: [User, Organization, OrganizationMember],
+      models: [User, Organization, OrganizationMember, ResearchJob, ResearchSource],
       autoLoadModels: true,
       synchronize: configService.get<string>('NODE_ENV') === 'development',
       logging: configService.get<string>('NODE_ENV') === 'development' ? console.log : false,
@@ -45,7 +47,7 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
     username: configService.get<string>('DB_USERNAME', 'postgres'),
     password: configService.get<string>('DB_PASSWORD', 'postgres'),
     database: configService.get<string>('DB_NAME', 'market_analysis'),
-    models: [User, Organization, OrganizationMember],
+    models: [User, Organization, OrganizationMember, ResearchJob, ResearchSource],
     autoLoadModels: true,
     synchronize: configService.get<string>('NODE_ENV') === 'development',
     logging: configService.get<string>('NODE_ENV') === 'development' ? console.log : false,

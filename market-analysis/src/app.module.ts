@@ -4,6 +4,8 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ResearchModule } from './research/research.module';
+import { CompanyContextModule } from './company-context/company-context.module';
 import { getDatabaseConfig } from './config/database.config';
 
 @Module({
@@ -21,6 +23,8 @@ import { getDatabaseConfig } from './config/database.config';
     }),
     // Feature modules
     AuthModule,
+    CompanyContextModule,
+    ResearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

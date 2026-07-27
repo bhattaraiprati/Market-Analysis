@@ -3,15 +3,52 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { WinstonModule } from 'nest-winston';
+import winston from 'winston';
+import path from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Buffer logs until our custom logger is fully initialized
+    bufferLogs: true, 
+  });
 
   // Enable CORS
   app.enableCors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   });
+
+  // Replace default logger with Winston
+  app.useLogger(
+    WinstonModule.createLogger({
+      format: winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.json() // Saves logs in highly-readable structured JSON format
+      ),
+      transports: [
+        // 1. Keep printing logs in the terminal console
+        new winston.transports.Console({
+          format: winston.format.combine(
+            winston.format.colorize(),
+            winston.format.simple()
+          ),
+        }),
+        // 2. Save all application logs to a file
+        new winston.transports.File({
+          dirname: path.join(__dirname, './../logs'), // Creates a 'logs' folder in root
+          filename: 'combined.log',
+          level: 'info',
+        }),
+        // 3. Save only error logs into a separate file for debugging
+        new winston.transports.File({
+          dirname: path.join(__dirname, './../logs'),
+          filename: 'error.log',
+          level: 'error',
+        }),
+      ],
+    })
+  );
 
   // Global validation pipe
   app.useGlobalPipes(

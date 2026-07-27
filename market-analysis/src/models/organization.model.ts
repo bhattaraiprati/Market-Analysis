@@ -1,9 +1,11 @@
 import {
+  BelongsTo,
   BelongsToMany,
   Column,
   CreatedAt,
   DataType,
   Default,
+  ForeignKey,
   HasMany,
   Model,
   PrimaryKey,
@@ -25,6 +27,10 @@ export class Organization extends Model {
   @Default(DataType.UUIDV4)
   @Column(DataType.UUID)
   declare id: string;
+
+  @ForeignKey(() => User)
+  @Column({ type: DataType.UUID, allowNull: true })
+  declare owner_id: string;
 
   @Column({ type: DataType.STRING, allowNull: false })
   declare name: string;
@@ -76,6 +82,9 @@ export class Organization extends Model {
   declare updated_at: Date;
 
   // ASSOCIATIONS
+  @BelongsTo(() => User)
+  declare owner: User;
+
   @HasMany(() => OrganizationMember)
   declare members: OrganizationMember[];
 
