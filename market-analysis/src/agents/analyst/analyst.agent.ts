@@ -1,11 +1,10 @@
 /**
  * Analyst Agent
  * Analyzes competitor data and generates strategic insights
- * Uses: Groq (Llama 3.3) for deep reasoning and structured analysis
+ * Uses: Claude Sonnet 4.5 via AWS Bedrock for deep reasoning and structured analysis
  */
 
 import { Injectable } from '@nestjs/common';
-import Groq from 'groq-sdk';
 import { BaseAgent } from '../base/base.agent';
 import {
   AgentContext,
@@ -14,6 +13,7 @@ import {
   CompetitorInfo,
 } from '../base/agent.types';
 import { CompanyContextService } from '../../company-context/company-context.service';
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
 /**
  * Structured analysis result
@@ -94,14 +94,18 @@ export interface AnalystResult {
 
 @Injectable()
 export class AnalystAgent extends BaseAgent<AnalystResult> {
-  private readonly groq: Groq;
+  private readonly bedrock: BedrockRuntimeClient;
+  private readonly modelId = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
 
   constructor(private readonly companyContextService: CompanyContextService) {
     super('AnalystAgent');
 
-    // Initialize Groq SDK
-    this.groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
+    this.bedrock = new BedrockRuntimeClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY!,
+      },
     });
   }
 
@@ -142,7 +146,8 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         context.companyContext,
       );
 
-      this.logSuccess(`Analyzed ${competitorAnalyses.length} competitors`);
+
+      this.logSuccess(`Analyzed ALL THIS  ${competitorAnalyses} competitors`);
 
       // 5. Perform gap analysis
       this.logStart('Performing gap analysis...');
@@ -153,6 +158,8 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
       );
 
       this.logSuccess(`Identified ${gapAnalysis.length} strategic gaps`);
+      this.logSuccess(`Identified ${gapAnalysis} strategic gaps`);
+
 
       // 6. Generate strategic recommendations
       this.logStart('Generating strategic recommendations...');
@@ -164,6 +171,8 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
       );
 
       this.logSuccess(`Generated ${strategicRecommendations.length} recommendations`);
+      this.logSuccess(`Generated ${strategicRecommendations} recommendations`);
+
 
       // 7. Analyze market position
       this.logStart('Analyzing market position...');
@@ -289,13 +298,15 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
     // Combine all scraped content
     const combinedContent = this.combineSourceContent(sources);
 
-    // Truncate if too long (Groq has token limits)
-    const maxLength = 15000; // ~4000 tokens
+    // Truncate if too long (Claude has token limits)
+    const maxLength = 30000; // ~10000 tokens (Claude has larger context)
     const truncatedContent = combinedContent.length > maxLength
       ? combinedContent.substring(0, maxLength) + '\n\n[Content truncated due to length...]'
       : combinedContent;
 
-    const prompt = `You are a competitive intelligence analyst. Analyze this competitor deeply and provide structured insights.
+    const systemPrompt = 'You are a competitive intelligence expert. Return only valid JSON objects.';
+
+    const userPrompt = `You are a competitive intelligence analyst. Analyze this competitor deeply and provide structured insights.
 
 YOUR COMPANY CONTEXT:
 ${companyContext}
@@ -334,23 +345,7 @@ IMPORTANT:
 JSON:`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a competitive intelligence expert. Return only valid JSON objects.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.4, // Lower for more consistent analysis
-        max_tokens: 3000,
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from Groq');
-      }
+      const content = await this.callClaude(systemPrompt, userPrompt, 3000, 0.4);
 
       // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -399,7 +394,9 @@ JSON:`;
 
     const competitorCapabilities = Array.from(allFeatures).concat(Array.from(allStrengths));
 
-    const prompt = `You are a strategic gap analyst. Identify competitive gaps for this company.
+    const systemPrompt = 'You are a strategic gap analyst. Return only valid JSON arrays.';
+
+    const userPrompt = `You are a strategic gap analyst. Identify competitive gaps for this company.
 
 YOUR COMPANY:
 ${companyContext}
@@ -443,23 +440,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a strategic gap analyst. Return only valid JSON arrays.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.5,
-        max_tokens: 3000,
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from Groq');
-      }
+      const content = await this.callClaude(systemPrompt, userPrompt, 3000, 0.5);
 
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
@@ -483,7 +464,9 @@ JSON:`;
     companyContext: string,
     orgData: any,
   ): Promise<StrategicRecommendation[]> {
-    const prompt = `You are a strategic advisor. Generate actionable recommendations for this company.
+    const systemPrompt = 'You are a strategic business advisor. Return only valid JSON arrays.';
+
+    const userPrompt = `You are a strategic advisor. Generate actionable recommendations for this company.
 
 YOUR COMPANY:
 ${companyContext}
@@ -524,23 +507,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a strategic business advisor. Return only valid JSON arrays.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.6,
-        max_tokens: 4000,
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from Groq');
-      }
+      const content = await this.callClaude(systemPrompt, userPrompt, 4000, 0.6);
 
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
@@ -563,7 +530,9 @@ JSON:`;
     companyContext: string,
     orgData: any,
   ): Promise<MarketPosition> {
-    const prompt = `You are a market analyst. Analyze this company's position in the competitive landscape.
+    const systemPrompt = 'You are a market intelligence analyst. Return only valid JSON objects.';
+
+    const userPrompt = `You are a market analyst. Analyze this company's position in the competitive landscape.
 
 YOUR COMPANY:
 ${companyContext}
@@ -599,23 +568,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a market intelligence analyst. Return only valid JSON objects.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.5,
-        max_tokens: 2000,
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from Groq');
-      }
+      const content = await this.callClaude(systemPrompt, userPrompt, 2000, 0.5);
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -649,7 +602,9 @@ JSON:`;
     const criticalGaps = gapAnalysis.filter((g) => g.impact === 'high');
     const criticalRecommendations = strategicRecommendations.filter((r) => r.priority === 'critical' || r.priority === 'high');
 
-    const prompt = `You are a business intelligence executive. Create an executive summary of this competitive analysis.
+    const systemPrompt = 'You are a business intelligence executive. Return only valid JSON objects.';
+
+    const userPrompt = `You are a business intelligence executive. Create an executive summary of this competitive analysis.
 
 COMPANY: ${orgData.name}
 COMPETITORS ANALYZED: ${competitorAnalyses.length}
@@ -694,23 +649,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a business intelligence executive. Return only valid JSON objects.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.6,
-        max_tokens: 2000,
-      });
-
-      const content = completion.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from Groq');
-      }
+      const content = await this.callClaude(systemPrompt, userPrompt, 2000, 0.6);
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -752,4 +691,47 @@ JSON:`;
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  /**
+ * Call Claude Sonnet 4.5 via Amazon Bedrock
+ */
+private async callClaude(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens = 4000,
+  temperature = 0.4,
+): Promise<string> {
+  const payload = {
+    anthropic_version: 'bedrock-2023-05-31',
+    max_tokens: maxTokens,
+    temperature,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: userPrompt }],
+      },
+    ],
+  };
+
+  const command = new InvokeModelCommand({
+    modelId: this.modelId,
+    contentType: 'application/json',
+    accept: 'application/json',
+    body: JSON.stringify(payload),
+  });
+
+  const response = await this.bedrock.send(command);
+  const decoded = new TextDecoder().decode(response.body);
+  const parsed = JSON.parse(decoded);
+
+  // Claude returns content as an array
+  const text = parsed.content?.[0]?.text;
+  if (!text) {
+    throw new Error('Empty response from Claude');
+  }
+  return text;
 }
+}
+
+

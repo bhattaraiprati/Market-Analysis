@@ -3,7 +3,7 @@
  * Handles research job creation and agent orchestration
  */
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { SearcherAgent } from '../agents/searcher/searcher.agent';
 import { AnalystAgent } from '../agents/analyst/analyst.agent';
@@ -13,6 +13,8 @@ import { ResearchSource } from '../models/research-source.model';
 
 @Injectable()
 export class ResearchService {
+  private readonly logger = new Logger(ResearchService.name);
+
   constructor(
     @InjectModel(ResearchJob)
     private readonly researchJobRepo: typeof ResearchJob,
@@ -22,6 +24,7 @@ export class ResearchService {
     private readonly analystAgent: AnalystAgent,
     private readonly companyContextService: CompanyContextService,
   ) {}
+  
 
   /**
    * Start competitor research for an organization
@@ -235,10 +238,13 @@ export class ResearchService {
       { where: { id: jobId } },
     );
 
-    console.log(`📊 Stored analysis results for job ${jobId}`);
-    console.log(`   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`);
-    console.log(`   - ${analysis.gapAnalysis.length} gaps identified`);
-    console.log(`   - ${analysis.strategicRecommendations.length} recommendations generated`);
+    this.logger.log(`📊 Stored analysis results for job ${jobId}`);
+    this.logger.log(`   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`);
+    this.logger.log(`   - ${analysis.gapAnalysis} gaps identified`);
+    this.logger.log(`   - ${analysis.strategicRecommendations} recommendations generated`);
+    this.logger.log(`   - ${analysis.executiveSummary} executive summaries generated`);
+    this.logger.log(`   - ${analysis.keyInsights} key insights generated`);
+
   }
 
   /**
