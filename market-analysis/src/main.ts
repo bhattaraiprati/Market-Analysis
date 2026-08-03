@@ -27,8 +27,9 @@ async function bootstrap() {
         winston.format.json() // Saves logs in highly-readable structured JSON format
       ),
       transports: [
-        // 1. Keep printing logs in the terminal console
+        // 1. Console: Only show errors and warnings in terminal (analysis results use console.log)
         new winston.transports.Console({
+          level: process.env.LOG_LEVEL || 'error', // Only errors by default
           format: winston.format.combine(
             winston.format.colorize(),
             winston.format.simple()

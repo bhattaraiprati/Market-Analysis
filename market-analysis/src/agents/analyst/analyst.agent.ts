@@ -1,7 +1,7 @@
 /**
  * Analyst Agent
  * Analyzes competitor data and generates strategic insights
- * Uses: Claude Sonnet 4.5 via AWS Bedrock for deep reasoning and structured analysis
+ * Uses: Claude Sonnet 3.5 v2 via AWS Bedrock for deep reasoning and structured analysis
  */
 
 import { Injectable } from '@nestjs/common';
@@ -95,18 +95,26 @@ export interface AnalystResult {
 @Injectable()
 export class AnalystAgent extends BaseAgent<AnalystResult> {
   private readonly bedrock: BedrockRuntimeClient;
-  private readonly modelId = 'anthropic.claude-sonnet-4-5-20250929-v1:0';
+
+  private readonly modelId = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
 
   constructor(private readonly companyContextService: CompanyContextService) {
     super('AnalystAgent');
 
+    // Validate environment variables
+    if (!process.env.CLAUDE_ACCESS_KEY_ID || !process.env.CLAUDE_SECRET_ACCESS_KEY) {
+      throw new Error('AWS credentials not found. Please set CLAUDE_ACCESS_KEY_ID and CLAUDE_SECRET_ACCESS_KEY in .env file');
+    }
+
     this.bedrock = new BedrockRuntimeClient({
       region: process.env.AWS_REGION || 'us-east-1',
       credentials: {
-        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY!,
+        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
+        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
       },
     });
+
+    this.logger.log(`Initialized Bedrock client for region: ${process.env.AWS_REGION || 'us-east-1'}`);
   }
 
   /**
@@ -147,7 +155,7 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
       );
 
 
-      this.logSuccess(`Analyzed ALL THIS  ${competitorAnalyses} competitors`);
+      console.log(`\n📊 Competitor Analysis Summary: ${competitorAnalyses.length} competitors analyzed`);
 
       // 5. Perform gap analysis
       this.logStart('Performing gap analysis...');
@@ -157,8 +165,12 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         orgData,
       );
 
-      this.logSuccess(`Identified ${gapAnalysis.length} strategic gaps`);
-      this.logSuccess(`Identified ${gapAnalysis} strategic gaps`);
+      console.log(`\n🔍 Gap Analysis Results (${gapAnalysis.length} gaps identified):`);
+      gapAnalysis.forEach((gap, idx) => {
+        console.log(`   ${idx + 1}. [${gap.impact.toUpperCase()}] ${gap.gapTitle}`);
+        console.log(`      Category: ${gap.category} | Status: ${gap.yourCompanyStatus}`);
+        console.log(`      Competitors doing well: ${gap.competitorsDoingWell.join(', ')}`);
+      });
 
 
       // 6. Generate strategic recommendations
@@ -170,8 +182,12 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         orgData,
       );
 
-      this.logSuccess(`Generated ${strategicRecommendations.length} recommendations`);
-      this.logSuccess(`Generated ${strategicRecommendations} recommendations`);
+      console.log(`\n💡 Strategic Recommendations (${strategicRecommendations.length} generated):`);
+      strategicRecommendations.forEach((rec, idx) => {
+        console.log(`   ${idx + 1}. [${rec.priority.toUpperCase()}] ${rec.title}`);
+        console.log(`      Category: ${rec.category} | Timeframe: ${rec.timeframe}`);
+        console.log(`      Impact: ${rec.expectedImpact}`);
+      });
 
 
       // 7. Analyze market position
@@ -194,7 +210,11 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         orgData,
       );
 
-      this.logSuccess('Executive summary generated');
+      console.log(`\n📝 Executive Summary:\n${executiveSummary}`);
+      console.log(`\n🎯 Key Insights:`);
+      keyInsights.forEach((insight, idx) => {
+        console.log(`   ${idx + 1}. ${insight}`);
+      });
 
       const executionTimeMs = Date.now() - startTime;
 
@@ -271,9 +291,17 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
       batchResults.forEach((result, idx) => {
         if (result.status === 'fulfilled' && result.value) {
           analyses.push(result.value);
-          this.logger.log(`✅ Analyzed: ${batch[idx]} (${result.value.keyFeatures.length} features identified)`);
+          const analysis = result.value;
+          console.log(`\n✅ ${batch[idx]} Analysis:`);
+          console.log(`   Position: ${analysis.marketPosition} | Threat: ${analysis.threatLevel}`);
+          console.log(`   Strengths: ${analysis.strengths.slice(0, 3).join(', ')}`);
+          console.log(`   Key Features: ${analysis.keyFeatures.slice(0, 3).join(', ')}`);
+          console.log(`   Pricing: ${analysis.pricingModel.model} (${analysis.pricingModel.competitiveness})`);
         } else {
-          this.logger.warn(`⚠️ Failed to analyze: ${batch[idx]}`);
+          this.logger.error(`⚠️ Failed to analyze: ${batch[idx]}`);
+          if (result.status === 'rejected') {
+            this.logger.error(`   Reason: ${result.reason?.message || 'Unknown error'}`);
+          }
         }
       });
 

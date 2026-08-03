@@ -5,6 +5,13 @@ import { Organization } from '../models/organization.model';
 import { OrganizationMember } from '../models/organizationMember.model';
 import { ResearchJob } from '../models/research-job.model';
 import { ResearchSource } from '../models/research-source.model';
+import { KnowledgeBase } from '../models/knowledge-base.model';
+import { KBFile } from '../models/kb-file.model';
+import { Persona } from '../models/persona.model';
+import { PersonaKnowledgeBase } from '../models/persona-knowledge-base.model';
+import { PersonaPermission } from '../models/persona-permission.model';
+import { Conversation } from '../models/conversation.model';
+import { Message } from '../models/message.model';
 
 export const getDatabaseConfig = (configService: ConfigService): SequelizeModuleOptions => {
   const databaseUrl = configService.get<string>('DATABASE_URL');
@@ -26,7 +33,20 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
           rejectUnauthorized: false, // Required for Neon and most cloud PostgreSQL providers
         },
       },
-      models: [User, Organization, OrganizationMember, ResearchJob, ResearchSource],
+      models: [
+        User,
+        Organization,
+        OrganizationMember,
+        ResearchJob,
+        ResearchSource,
+        KnowledgeBase,
+        KBFile,
+        Persona,
+        PersonaKnowledgeBase,
+        PersonaPermission,
+        Conversation,
+        Message,
+      ],
       autoLoadModels: true,
       synchronize: configService.get<string>('NODE_ENV') === 'development',
       logging: configService.get<string>('NODE_ENV') === 'development' ? console.log : false,

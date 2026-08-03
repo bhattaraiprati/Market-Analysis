@@ -12,6 +12,8 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Header,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ResearchService } from './research.service';
@@ -80,6 +82,26 @@ export class ResearchController {
   ) {
     const organizationId = await this.getUserOrganizationId(user.userId);
     return this.researchService.getJobSources(jobId, organizationId);
+  }
+
+  @Get('jobs/:jobId/report')
+  @Header('Content-Type', 'text/markdown')
+  @ApiOperation({
+    summary: 'Download research report',
+    description: 'Downloads the Markdown report for a completed research job',
+  })
+  async downloadReport(
+    @CurrentUser() user: CurrentUserData,
+    @Param('jobId') jobId: string,
+  ) {
+    const organizationId = await this.getUserOrganizationId(user.userId);
+    const job = await this.researchService.getJobStatus(jobId, organizationId);
+
+    if (!job.output_results?.report?.markdown) {
+      throw new NotFoundException('Report not available for this job. Ensure the job is completed.');
+    }
+
+    return job.output_results.report.markdown;
   }
 
   /**

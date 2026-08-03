@@ -6,6 +6,7 @@ import { ResearchJob } from '../models/research-job.model';
 import { ResearchSource } from '../models/research-source.model';
 import { SearcherModule } from '../agents/searcher/searcher.module';
 import { AnalystModule } from '../agents/analyst/analyst.module';
+import { WriterModule } from '../agents/writer/writer.module';
 import { CompanyContextModule } from '../company-context/company-context.module';
 
 @Module({
@@ -13,6 +14,7 @@ import { CompanyContextModule } from '../company-context/company-context.module'
     SequelizeModule.forFeature([ResearchJob, ResearchSource]),
     SearcherModule,
     AnalystModule,
+    WriterModule,
     CompanyContextModule,
   ],
   controllers: [ResearchController],

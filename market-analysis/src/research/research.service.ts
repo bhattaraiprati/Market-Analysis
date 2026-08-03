@@ -7,6 +7,7 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { SearcherAgent } from '../agents/searcher/searcher.agent';
 import { AnalystAgent } from '../agents/analyst/analyst.agent';
+import { WriterAgent } from '../agents/writer/writer.agent';
 import { CompanyContextService } from '../company-context/company-context.service';
 import { ResearchJob } from '../models/research-job.model';
 import { ResearchSource } from '../models/research-source.model';
@@ -22,6 +23,7 @@ export class ResearchService {
     private readonly researchSourceRepo: typeof ResearchSource,
     private readonly searcherAgent: SearcherAgent,
     private readonly analystAgent: AnalystAgent,
+    private readonly writerAgent: WriterAgent,
     private readonly companyContextService: CompanyContextService,
   ) {}
   
@@ -139,6 +141,46 @@ export class ResearchService {
       // Store analysis results
       await this.storeAnalysis(jobId, analystResult.data);
 
+      // Update job status - Analyst completed, starting Writer
+      await this.researchJobRepo.update(
+        {
+          status: 'IN_PROGRESS',
+          agent_orchestration_state: {
+            currentAgent: 'Writer',
+            currentStep: 'Generating professional report',
+            analystCompleted: true,
+            competitorsAnalyzed: analystResult.data.totalCompetitorsAnalyzed,
+            transitionedAt: new Date().toISOString(),
+          },
+        },
+        { where: { id: jobId } },
+      );
+
+      // Execute Writer Agent
+      console.log(`📝 Starting WriterAgent for job ${jobId}...`);
+
+      // Get company name for report
+      const orgData = await this.companyContextService.getOrganization(organizationId);
+
+      const writerResult = await this.writerAgent.execute({
+        organizationId,
+        researchJobId: jobId,
+        companyContext,
+        additionalParams: {
+          analystResult: analystResult.data,
+          companyName: orgData.name,
+        },
+      });
+
+      if (!writerResult.success || !writerResult.data) {
+        throw new Error(writerResult.error || 'Writer agent failed');
+      }
+
+      console.log(`✅ WriterAgent completed: ${writerResult.data.wordCount} words generated`);
+
+      // Store report
+      await this.storeReport(jobId, writerResult.data);
+
       // Update job with final results
       await this.researchJobRepo.update(
         {
@@ -158,6 +200,11 @@ export class ResearchService {
               gapsIdentified: analystResult.data.gapAnalysis.length,
               recommendationsGenerated: analystResult.data.strategicRecommendations.length,
               executionTimeMs: analystResult.data.executionTimeMs,
+            },
+            writerResults: {
+              reportGenerated: true,
+              wordCount: writerResult.data.wordCount,
+              executionTimeMs: writerResult.data.executionTimeMs,
             },
           },
         },
@@ -238,13 +285,45 @@ export class ResearchService {
       { where: { id: jobId } },
     );
 
-    this.logger.log(`📊 Stored analysis results for job ${jobId}`);
-    this.logger.log(`   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`);
-    this.logger.log(`   - ${analysis.gapAnalysis} gaps identified`);
-    this.logger.log(`   - ${analysis.strategicRecommendations} recommendations generated`);
-    this.logger.log(`   - ${analysis.executiveSummary} executive summaries generated`);
-    this.logger.log(`   - ${analysis.keyInsights} key insights generated`);
+    console.log(`\n📦 Stored analysis results for job ${jobId}`);
+    console.log(`   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`);
+    console.log(`   - ${analysis.gapAnalysis.length} gaps identified`);
+    console.log(`   - ${analysis.strategicRecommendations.length} recommendations generated`);
+    console.log(`   - Executive summary and ${analysis.keyInsights.length} key insights generated`);
 
+  }
+
+  /**
+   * Store report in database
+   */
+  private async storeReport(jobId: string, writerResult: any): Promise<void> {
+    if (!writerResult) {
+      console.warn(`No report to store for job ${jobId}`);
+      return;
+    }
+
+    // Get existing output_results and add report to it
+    const job = await this.researchJobRepo.findByPk(jobId);
+    const existingResults = job?.output_results || {};
+
+    await this.researchJobRepo.update(
+      {
+        output_results: {
+          ...existingResults,
+          report: {
+            markdown: writerResult.reportMarkdown,
+            title: writerResult.reportTitle,
+            generatedAt: writerResult.generatedAt,
+            wordCount: writerResult.wordCount,
+          },
+        },
+      },
+      { where: { id: jobId } },
+    );
+
+    console.log(`\n📝 Stored report for job ${jobId}`);
+    console.log(`   - ${writerResult.wordCount} words`);
+    console.log(`   - Generated at: ${writerResult.generatedAt}`);
   }
 
   /**
