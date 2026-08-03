@@ -1,0 +1,301 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Register Organization - Market | PersonaFlow</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Hanken+Grotesk:wght@600;700;800&amp;family=Geist:wght@400;500&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Hanken+Grotesk:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-dim": "#cbdbf5",
+                    "on-surface": "#0b1c30",
+                    "on-primary": "#ffffff",
+                    "inverse-surface": "#213145",
+                    "surface-bright": "#f8f9ff",
+                    "on-primary-fixed": "#002020",
+                    "primary-fixed": "#a3f0ef",
+                    "surface-container": "#e5eeff",
+                    "primary": "#005657",
+                    "on-tertiary-fixed-variant": "#6f3800",
+                    "on-secondary": "#ffffff",
+                    "surface-container-low": "#eff4ff",
+                    "inverse-on-surface": "#eaf1ff",
+                    "on-secondary-fixed": "#002020",
+                    "on-tertiary": "#ffffff",
+                    "on-primary-container": "#a4f1f0",
+                    "outline": "#6f7979",
+                    "error-container": "#ffdad6",
+                    "on-secondary-fixed-variant": "#004f50",
+                    "on-tertiary-fixed": "#2f1400",
+                    "tertiary-fixed-dim": "#ffb780",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-highest": "#d3e4fe",
+                    "secondary-container": "#a3edec",
+                    "surface-tint": "#0d6969",
+                    "outline-variant": "#bec9c8",
+                    "surface-variant": "#d3e4fe",
+                    "tertiary-container": "#96551a",
+                    "surface-container-high": "#dce9ff",
+                    "secondary-fixed": "#a6efef",
+                    "primary-container": "#1a7070",
+                    "on-error": "#ffffff",
+                    "on-background": "#0b1c30",
+                    "surface": "#f8f9ff",
+                    "tertiary": "#793e01",
+                    "primary-fixed-dim": "#87d3d3",
+                    "tertiary-fixed": "#ffdcc4",
+                    "on-error-container": "#93000a",
+                    "error": "#ba1a1a",
+                    "inverse-primary": "#87d3d3",
+                    "background": "#f8f9ff",
+                    "on-surface-variant": "#3f4948",
+                    "on-tertiary-container": "#ffddc7",
+                    "secondary-fixed-dim": "#8ad3d3",
+                    "on-secondary-container": "#1c6d6d",
+                    "on-primary-fixed-variant": "#004f50",
+                    "secondary": "#156969"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "4px",
+                    "xl": "32px",
+                    "margin-mobile": "16px",
+                    "3xl": "64px",
+                    "2xl": "48px",
+                    "md": "16px",
+                    "margin-desktop": "40px",
+                    "base": "4px",
+                    "lg": "24px",
+                    "gutter": "24px",
+                    "sm": "8px"
+            },
+            "fontFamily": {
+                    "label-md": ["Geist"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "label-sm": ["Geist"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "display-lg": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "label-md": ["14px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #F8FAFC;
+            color: #0b1c30;
+            overflow-x: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .step-active { color: #005657; font-weight: 600; }
+        .step-inactive { color: #6f7979; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.5);
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 left-0 right-0 h-20 px-margin-desktop flex items-center justify-between z-50 bg-surface/80 backdrop-blur-md">
+<button class="flex items-center gap-2 group text-primary transition-colors">
+
+
+</button>
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">corporate_fare</span>
+</div>
+<span class="font-headline-md text-headline-md font-bold text-primary">PersonaFlow</span>
+</div>
+<div class="w-32"></div> <!-- Spacer for balance -->
+</nav>
+<!-- Background Decoration -->
+<div class="fixed inset-0 pointer-events-none z-0">
+<div class="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-primary-fixed/20 blur-[120px] rounded-full"></div>
+<div class="absolute bottom-[-10%] left-[-5%] w-[30%] h-[30%] bg-secondary-container/20 blur-[100px] rounded-full"></div>
+</div>
+<!-- Main Content Canvas -->
+<main class="relative z-10 pt-32 pb-24 min-h-screen flex flex-col items-center">
+<div class="w-full max-w-4xl px-margin-mobile md:px-0">
+<!-- Header & Stepper Section -->
+<div class="text-center mb-xl">
+<h1 class="font-headline-lg text-headline-lg text-on-surface mb-md">Register Organization</h1>
+<!-- Stepper -->
+<div class="flex items-center justify-center gap-xl md:gap-24 relative">
+<!-- Progress Line -->
+<div class="absolute top-5 left-[20%] right-[20%] h-0.5 bg-outline-variant -z-10">
+<div class="h-full bg-primary w-1/2 transition-all duration-500"></div>
+</div>
+<!-- Step 1 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-label-md text-label-md text-primary">Profile</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-primary-container text-on-primary-container ring-4 ring-primary/10 flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+<span class="font-label-md text-label-md text-primary font-bold">Market</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-surface-container text-outline flex items-center justify-center">
+<span class="material-symbols-outlined">flag</span>
+</div>
+<span class="font-label-md text-label-md text-outline">Goals</span>
+</div>
+</div>
+</div>
+<!-- Bento Form Layout -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-lg">
+<!-- Left Column: Context & Hero Image -->
+<div class="md:col-span-5 space-y-lg">
+
+</div>
+<!-- Right Column: Form Fields -->
+<div class="md:col-span-7 space-y-lg">
+<form class="space-y-lg" id="registration-form">
+<!-- Target Customers -->
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm transition-shadow hover:shadow-md">
+<label class="block font-label-md text-label-md text-on-surface mb-xs" for="target-customers">Target Customers</label>
+<p class="text-body-sm text-on-surface-variant mb-md italic">Define the segments or ideal buyer personas your AI solutions serve.</p>
+<textarea class="w-full bg-surface-bright border-outline-variant rounded-lg p-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-outline/50" id="target-customers" placeholder="e.g., Enterprise firms in North America looking to automate data workflows and democratize AI..." rows="4"></textarea>
+</div>
+<!-- Known Competitors -->
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm transition-shadow hover:shadow-md">
+<label class="block font-label-md text-label-md text-on-surface mb-xs">Known Competitors</label>
+<p class="text-body-sm text-on-surface-variant mb-md">Select major players in your space or add custom ones.</p>
+<div class="flex flex-wrap gap-sm">
+<button class="competitor-pill active px-4 py-2 rounded-full border border-primary bg-secondary-container/30 text-primary font-label-md text-label-md transition-all flex items-center gap-1" type="button">
+                                    Turing <span class="material-symbols-outlined text-sm">check_circle</span>
+</button>
+<button class="competitor-pill active px-4 py-2 rounded-full border border-primary bg-secondary-container/30 text-primary font-label-md text-label-md transition-all flex items-center gap-1" type="button">
+                                    Fractal Analytics <span class="material-symbols-outlined text-sm">check_circle</span>
+</button>
+<button class="competitor-pill active px-4 py-2 rounded-full border border-primary bg-secondary-container/30 text-primary font-label-md text-label-md transition-all flex items-center gap-1" type="button">
+                                    DataRobot <span class="material-symbols-outlined text-sm">check_circle</span>
+</button>
+<button class="competitor-pill active px-4 py-2 rounded-full border border-primary bg-secondary-container/30 text-primary font-label-md text-label-md transition-all flex items-center gap-1" type="button">
+                                    Persistent Systems <span class="material-symbols-outlined text-sm">check_circle</span>
+</button>
+<button class="px-4 py-2 rounded-full border border-dashed border-outline-variant text-on-surface-variant font-label-md text-label-md hover:border-primary hover:text-primary transition-all flex items-center gap-1" type="button">
+<span class="material-symbols-outlined text-sm">add</span> Add Other
+                                </button>
+</div>
+</div>
+<!-- Current Challenges -->
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm transition-shadow hover:shadow-md">
+<label class="block font-label-md text-label-md text-on-surface mb-xs" for="current-challenges">Current Challenges</label>
+<p class="text-body-sm text-on-surface-variant mb-md">What are the primary hurdles facing Fusemachines Inc. today?</p>
+<textarea class="w-full bg-surface-bright border-outline-variant rounded-lg p-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-outline/50" id="current-challenges" placeholder="e.g., Intense competition, talent retention in offshore markets, and rapid technology cycles..." rows="3"></textarea>
+<div class="mt-md flex flex-wrap gap-2">
+<span class="text-body-sm px-3 py-1 bg-surface-container-low rounded-lg text-on-surface-variant">Intense competition</span>
+<span class="text-body-sm px-3 py-1 bg-surface-container-low rounded-lg text-on-surface-variant">Talent retention</span>
+<span class="text-body-sm px-3 py-1 bg-surface-container-low rounded-lg text-on-surface-variant">Regulatory shifts</span>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="flex items-center justify-between pt-xl border-t border-outline-variant">
+<button class="px-xl py-md rounded-lg font-label-md text-label-md text-outline hover:text-primary transition-colors flex items-center gap-2" type="button">
+                                Save as Draft
+                            </button>
+<button class="px-3xl py-md bg-primary text-on-primary rounded-lg font-label-md text-label-md font-bold shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2" type="submit">
+                                Next Step
+                                <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+<!-- Footer Quote/Social Proof (Subtle) -->
+<div class="mt-3xl text-center">
+<p class="text-body-sm text-outline italic">"Strategic market positioning is the foundation of PersonaFlow's AI logic."</p>
+</div>
+</div>
+</main>
+<script>
+        // Micro-interactions for competitor pills
+        document.querySelectorAll('.competitor-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                pill.classList.toggle('active');
+                if (pill.classList.contains('active')) {
+                    pill.classList.remove('bg-surface-bright', 'text-on-surface-variant');
+                    pill.classList.add('bg-secondary-container/30', 'text-primary', 'border-primary');
+                    pill.innerHTML = pill.innerText.trim() + ' <span class="material-symbols-outlined text-sm">check_circle</span>';
+                } else {
+                    pill.classList.add('bg-surface-bright', 'text-on-surface-variant');
+                    pill.classList.remove('bg-secondary-container/30', 'text-primary', 'border-primary');
+                    pill.innerHTML = pill.innerText.trim();
+                }
+            });
+        });
+
+        // Simple form validation visual feedback
+        document.getElementById('registration-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalContent = btn.innerHTML;
+            
+            btn.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span> Processing...';
+            btn.disabled = true;
+            
+            setTimeout(() => {
+                btn.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Success';
+                btn.classList.replace('bg-primary', 'bg-emerald-600');
+                
+                // Trigger transition to "Next" in a real app
+                setTimeout(() => {
+                   alert('Market analysis saved. Proceeding to Goals...');
+                   btn.innerHTML = originalContent;
+                   btn.disabled = false;
+                   btn.classList.replace('bg-emerald-600', 'bg-primary');
+                }, 1000);
+            }, 1500);
+        });
+
+        // Floating label effect for textareas
+        document.querySelectorAll('textarea').forEach(area => {
+            area.addEventListener('focus', () => {
+                area.parentElement.classList.add('ring-2', 'ring-primary/5');
+            });
+            area.addEventListener('blur', () => {
+                area.parentElement.classList.remove('ring-2', 'ring-primary/5');
+            });
+        });
+    </script>
+
+
+</body></html>

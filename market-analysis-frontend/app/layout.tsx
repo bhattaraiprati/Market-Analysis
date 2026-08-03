@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "./components/AuthProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -35,7 +36,9 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-surface">{children}</body>
+      <body className="min-h-screen" style={{ backgroundColor: '#f8f9ff' }} suppressHydrationWarning>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

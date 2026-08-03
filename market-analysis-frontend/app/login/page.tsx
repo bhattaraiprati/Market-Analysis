@@ -1,15 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/authStore';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login, isLoading, error, clearError } = useAuthStore();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
 
   useEffect(() => {
+    // Clear any previous errors
+    clearError();
+
     // Card 3D hover effect
     const card = document.querySelector('.glass-card');
     const handleMouseMove = (e: MouseEvent) => {
@@ -29,12 +38,21 @@ export default function LoginPage() {
 
     document.addEventListener('mousemove', handleMouseMove);
     return () => document.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [clearError]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login:', { email, password, remember });
-    // TODO: Implement actual login logic
+
+    try {
+      await login({ email, password });
+
+      // Get redirect URL from query params or default to dashboard
+      const redirectUrl = searchParams.get('redirect') || '/dashboard';
+      router.push(redirectUrl);
+    } catch (error) {
+      // Error is handled by the store
+      console.error('Login failed:', error);
+    }
   };
 
   const togglePasswordVisibility = () => {
@@ -109,6 +127,34 @@ export default function LoginPage() {
 
           {/* Login Form */}
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* Error Message */}
+            {error && (
+              <div
+                className="p-4 rounded-lg flex items-start gap-3"
+                style={{
+                  backgroundColor: '#ffdad6',
+                  border: '1px solid #ba1a1a',
+                }}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ color: '#ba1a1a', fontSize: '20px' }}
+                >
+                  error
+                </span>
+                <p
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '14px',
+                    lineHeight: '20px',
+                    color: '#93000a',
+                  }}
+                >
+                  {error}
+                </p>
+              </div>
+            )}
+
             {/* Email Field */}
             <div className="space-y-1">
               <label
@@ -280,20 +326,35 @@ export default function LoginPage() {
             <button
               className="w-full py-3.5 rounded-lg transition-all transform active:scale-[0.98] shadow-md hover:shadow-lg flex items-center justify-center gap-2"
               type="submit"
+              disabled={isLoading}
               style={{
-                backgroundColor: '#1a7070',
+                backgroundColor: isLoading ? '#6f7979' : '#1a7070',
                 color: '#ffffff',
                 fontFamily: 'Geist, sans-serif',
                 fontSize: '14px',
                 lineHeight: '16px',
                 fontWeight: '500',
-                letterSpacing: '0.02em'
+                letterSpacing: '0.02em',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#145a5a'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a7070'}
+              onMouseEnter={(e) => {
+                if (!isLoading) e.currentTarget.style.backgroundColor = '#145a5a';
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading) e.currentTarget.style.backgroundColor = '#1a7070';
+              }}
             >
-              Sign In
-              <span className="material-symbols-outlined text-[20px]">login</span>
+              {isLoading ? (
+                <>
+                  <span className="animate-spin">⟳</span>
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  Sign In
+                  <span className="material-symbols-outlined text-[20px]">login</span>
+                </>
+              )}
             </button>
           </form>
 
