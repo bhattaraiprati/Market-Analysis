@@ -103,9 +103,11 @@ export class CloudinaryService {
             resource_type: resourceType,
             public_id: publicId,
             tags,
-            use_filename: true,
-            unique_filename: true,
-            original_filename: originalFilename,
+            use_filename: false,
+            unique_filename: false,
+            overwrite: false,
+            filename_override: originalFilename,
+            display_name: originalFilename,
           },
           (error, result) => {
             if (error) {

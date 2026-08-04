@@ -15,7 +15,7 @@ export class CreatePersonaDto {
   @IsString()
   @MinLength(3, { message: 'Name must be at least 3 characters long' })
   @MaxLength(255, { message: 'Name must not exceed 255 characters' })
-  name: string;
+  declare name: string;
 
   @IsOptional()
   @IsString()
@@ -23,7 +23,7 @@ export class CreatePersonaDto {
   description?: string;
 
   @IsEnum(PersonaRole, { message: 'Invalid primary focus role' })
-  primary_focus_role: PersonaRole;
+  declare primary_focus_role: PersonaRole;
 
   @IsOptional()
   @IsArray()

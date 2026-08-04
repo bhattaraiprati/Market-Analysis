@@ -12,22 +12,22 @@ export class CreateKnowledgeBaseDto {
   @IsString()
   @MinLength(3, { message: 'Name must be at least 3 characters long' })
   @MaxLength(255, { message: 'Name must not exceed 255 characters' })
-  name: string;
+  declare name: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(2000, { message: 'Description must not exceed 2000 characters' })
-  description?: string;
+  declare description?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  category?: string;
+  declare category?: string;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  tags?: string[];
+  declare tags?: string[];
 
   @IsOptional()
   @IsEnum(KnowledgeBaseVisibility)

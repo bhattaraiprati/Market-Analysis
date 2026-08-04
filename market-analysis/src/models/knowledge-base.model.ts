@@ -30,9 +30,9 @@ export enum KnowledgeBaseType {
 }
 
 export enum KnowledgeBaseVisibility {
-  PRIVATE = 'private',
-  TEAM = 'team',
-  ORGANIZATION = 'organization',
+  PRIVATE = 'PRIVATE',
+  PUBLIC = 'PUBLIC',
+  ORGANIZATION = 'ORGANIZATION',
 }
 
 @Table({

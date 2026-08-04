@@ -308,9 +308,9 @@ Content-Type: application/json
 
 ---
 
-## 5. Upload Files to Knowledge Base
+## 5. Upload a File to a Knowledge Base
 
-Upload one or multiple files to a knowledge base. Files will be processed asynchronously.
+Upload one file to a knowledge base. The file is stored as a raw Cloudinary asset and processed asynchronously.
 
 ### Supported File Types
 - PDF (`.pdf`)
@@ -318,8 +318,8 @@ Upload one or multiple files to a knowledge base. Files will be processed asynch
 - Text files (`.txt`)
 
 ### File Limits
-- **Max file size**: 50MB per file
-- **Max files per request**: 10 files
+- **Max file size**: 50MB
+- **Files per request**: 1
 
 ### Request (Multipart Form Data)
 ```http
@@ -327,9 +327,7 @@ POST http://localhost:4000/knowledge-bases/550e8400-e29b-41d4-a716-446655440000/
 Authorization: Bearer YOUR_JWT_TOKEN
 Content-Type: multipart/form-data
 
-files: sales_playbook.pdf
-files: product_guide.docx
-files: pricing_strategy.txt
+file: sales_playbook.pdf
 ```
 
 ### cURL Example
@@ -337,18 +335,15 @@ files: pricing_strategy.txt
 curl -X POST \
   http://localhost:4000/knowledge-bases/550e8400-e29b-41d4-a716-446655440000/files \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -F "files=@/path/to/sales_playbook.pdf" \
-  -F "files=@/path/to/product_guide.docx" \
-  -F "files=@/path/to/pricing_strategy.txt"
+  -F "file=@/path/to/sales_playbook.pdf"
 ```
 
 ### Response (201 Created)
 ```json
 {
   "success": true,
-  "message": "3 file(s) uploaded and queued for processing",
-  "data": [
-    {
+  "message": "File uploaded and queued for processing",
+  "data": {
       "id": "file-uuid-1",
       "knowledge_base_id": "550e8400-e29b-41d4-a716-446655440000",
       "original_filename": "sales_playbook.pdf",
@@ -360,33 +355,8 @@ curl -X POST \
       "processing_status": "pending",
       "indexed": false,
       "uploaded_at": "2024-01-15T10:35:00.000Z"
-    },
-    {
-      "id": "file-uuid-2",
-      "original_filename": "product_guide.docx",
-      "file_type": ".docx",
-      "file_size_bytes": 1024000,
-      "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "storage_path": "knowledge-base/org-uuid/kb-uuid/file-uuid-2",
-      "storage_url": "https://res.cloudinary.com/...",
-      "processing_status": "pending",
-      "indexed": false,
-      "uploaded_at": "2024-01-15T10:35:01.000Z"
-    },
-    {
-      "id": "file-uuid-3",
-      "original_filename": "pricing_strategy.txt",
-      "file_type": ".txt",
-      "file_size_bytes": 51200,
-      "mime_type": "text/plain",
-      "storage_path": "knowledge-base/org-uuid/kb-uuid/file-uuid-3",
-      "storage_url": "https://res.cloudinary.com/...",
-      "processing_status": "pending",
-      "indexed": false,
-      "uploaded_at": "2024-01-15T10:35:02.000Z"
-    }
-  ],
-  "info": "Files are being processed in the background. Check the file status for processing updates."
+  },
+  "info": "The file is being processed in the background. Check its status for processing updates."
 }
 ```
 
@@ -656,10 +626,9 @@ const createKB = await fetch('http://localhost:4000/knowledge-bases', {
 const kb = await createKB.json();
 const kbId = kb.data.id;
 
-// 2. Upload files
+// 2. Upload one file
 const formData = new FormData();
-formData.append('files', fileInput.files[0]);
-formData.append('files', fileInput.files[1]);
+formData.append('file', fileInput.files[0]);
 
 const upload = await fetch(`http://localhost:4000/knowledge-bases/${kbId}/files`, {
   method: 'POST',
@@ -739,9 +708,9 @@ curl -X POST http://localhost:4000/knowledge-bases/query \
 
 ## Rate Limits & Best Practices
 
-1. **File Upload**: Max 10 files per request, 50MB each
+1. **File Upload**: One file per request, 50MB maximum
 2. **Query Rate**: Recommend max 10 queries/second per organization
-3. **Batch Processing**: Files process sequentially, expect 10-30 seconds per file
+3. **Processing**: File processing is asynchronous; expect 10-30 seconds per file
 4. **Chunk Size**: Default 512 words works for most documents
 5. **Min Score**: Start with 0.7, adjust based on result quality
 6. **Top K**: Use 5-10 for most queries, increase for broader search

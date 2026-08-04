@@ -15,7 +15,7 @@ export class SharePersonaDto {
   user_ids?: string[];
 
   @IsEnum(AccessLevel)
-  access_level: AccessLevel;
+  declare access_level: AccessLevel;
 
   @IsOptional()
   @IsString()
@@ -25,12 +25,12 @@ export class SharePersonaDto {
 
 export class GenerateLinkDto {
   @IsEnum(['public', 'organization'])
-  link_type: 'public' | 'organization';
+  declare link_type: 'public' | 'organization';
 }
 
 export class AssignKnowledgeBaseDto {
   @IsUUID('4')
-  knowledge_base_id: string;
+  declare knowledge_base_id: string;
 
   @IsOptional()
   @IsEnum([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])

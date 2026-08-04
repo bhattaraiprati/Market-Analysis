@@ -8,7 +8,6 @@ import { Persona } from '../models/persona.model';
 import { ConversationOrchestratorAgent } from '../agents/conversation-orchestrator/conversation-orchestrator.agent';
 import { QueryRouterAgent } from '../agents/query-router/query-router.agent';
 import { WriterAgent } from '../agents/writer/writer.agent';
-import { SearcherAgent } from '../agents/searcher/searcher.agent';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
 
 @Module({
@@ -22,7 +21,6 @@ import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
     ConversationOrchestratorAgent,
     QueryRouterAgent,
     WriterAgent,
-    SearcherAgent,
   ],
   exports: [ConversationService],
 })

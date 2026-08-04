@@ -19,15 +19,18 @@ import { PersonaKnowledgeBase } from './persona-knowledge-base.model';
 import { PersonaPermission } from './persona-permission.model';
 
 export enum PersonaRole {
-  SALES = 'sales',
-  MARKETING = 'marketing',
-  CUSTOMER_SUPPORT = 'customer_support',
-  PRODUCT = 'product',
-  ENGINEERING = 'engineering',
-  FINANCE = 'finance',
-  OPERATIONS = 'operations',
-  HR = 'hr',
-  GENERAL = 'general',
+  COMPETITIVE_ANALYST = 'COMPETITIVE_ANALYST',
+  MARKET_RESEARCHER = 'MARKET_RESEARCHER',
+  CUSTOMER_SUCCESS_EXPERT = 'CUSTOMER_SUCCESS_EXPERT',
+  BUSINESS_STRATEGIST = 'BUSINESS_STRATEGIST',
+  GENERAL_ASSISTANT = 'GENERAL_ASSISTANT',
+  SALES = 'SALES',
+  MARKETING = 'MARKETING',
+  PRODUCT = 'PRODUCT',
+  ENGINEERING = 'ENGINEERING',
+  FINANCE = 'FINANCE',
+  OPERATIONS = 'OPERATIONS',
+  HR = 'HR',
 }
 
 export enum PersonaStatus {

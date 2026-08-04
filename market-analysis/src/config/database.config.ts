@@ -49,7 +49,7 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
       ],
       autoLoadModels: true,
       synchronize: configService.get<string>('NODE_ENV') === 'development',
-      logging: configService.get<string>('NODE_ENV') === 'development' ? console.log : false,
+      logging: false, // Disable SQL query logging
       pool: {
         max: 5,
         min: 0,
@@ -70,6 +70,6 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
     models: [User, Organization, OrganizationMember, ResearchJob, ResearchSource],
     autoLoadModels: true,
     synchronize: configService.get<string>('NODE_ENV') === 'development',
-    logging: configService.get<string>('NODE_ENV') === 'development' ? console.log : false,
+    logging: false, // Disable SQL query logging
   };
 };

@@ -16,6 +16,7 @@ import { CloudinaryService } from './services/cloudinary.service';
 import 'multer';
 import * as fs from 'fs';
 import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class KnowledgeBaseService {
@@ -192,13 +193,13 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Upload and process files for a knowledge base
+   * Upload and process one file for a knowledge base
    */
-  async uploadFiles(
+  async uploadFile(
     knowledgeBaseId: string,
-    files: Express.Multer.File[],
+    file: Express.Multer.File,
     organizationId: string,
-  ): Promise<KBFile[]> {
+  ): Promise<KBFile> {
     try {
       // Verify knowledge base exists and belongs to organization
       const knowledgeBase = await this.findOne(
@@ -206,71 +207,63 @@ export class KnowledgeBaseService {
         organizationId,
       );
 
-      const uploadedFiles: KBFile[] = [];
+      const folder = this.cloudinaryService.getKnowledgeBaseFolder(
+        organizationId,
+        knowledgeBaseId,
+      );
+      const extension = path.extname(file.originalname).toLowerCase();
+      const baseName =
+        path
+          .basename(file.originalname, extension)
+          .replace(/[^a-zA-Z0-9._-]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'document';
+      const publicId = `${uuidv4()}_${baseName}${extension}`;
 
-      for (const file of files) {
-        try {
-          // Upload to Cloudinary
-          const folder = this.cloudinaryService.getKnowledgeBaseFolder(
-            organizationId,
-            knowledgeBaseId,
-          );
+      // A raw upload stores the exact document bytes. Keeping the extension in
+      // the public ID also makes the Cloudinary delivery URL downloadable and
+      // readable as the original document type.
+      const cloudinaryResult = await this.cloudinaryService.uploadBuffer(
+        file.buffer,
+        {
+          folder,
+          resourceType: 'raw',
+          publicId,
+          tags: [organizationId, knowledgeBaseId, 'knowledge-base'],
+          originalFilename: file.originalname,
+        },
+      );
 
-          const cloudinaryResult = await this.cloudinaryService.uploadBuffer(
-            file.buffer,
-            {
-              folder,
-              resourceType: 'raw',
-              tags: [organizationId, knowledgeBaseId, 'knowledge-base'],
-              originalFilename: file.originalname,
-            },
-          );
+      const kbFile = await this.kbFileModel.create({
+        knowledge_base_id: knowledgeBaseId,
+        original_filename: file.originalname,
+        file_type: extension,
+        file_size_bytes: file.size,
+        mime_type: file.mimetype,
+        storage_path: cloudinaryResult.public_id,
+        storage_url: cloudinaryResult.secure_url,
+        storage_provider: 'cloudinary',
+        processing_status: FileProcessingStatus.PENDING,
+      });
 
-          // Create KB file record
-          const kbFile = await this.kbFileModel.create({
-            knowledge_base_id: knowledgeBaseId,
-            original_filename: file.originalname,
-            file_type: path.extname(file.originalname),
-            file_size_bytes: file.size,
-            mime_type: file.mimetype,
-            storage_path: cloudinaryResult.public_id,
-            storage_url: cloudinaryResult.secure_url,
-            storage_provider: 'cloudinary',
-            processing_status: FileProcessingStatus.PENDING,
-          });
+      this.logger.log(`File uploaded: ${file.originalname} (${kbFile.id})`);
 
-          uploadedFiles.push(kbFile);
-
-          this.logger.log(
-            `File uploaded: ${file.originalname} (${kbFile.id})`,
-          );
-
-          // Process file asynchronously
-          this.processFileAsync(
-            kbFile.id,
-            knowledgeBaseId,
-            organizationId,
-            cloudinaryResult.secure_url,
-            file.mimetype,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to upload file ${file.originalname}`,
-            error,
-          );
-          // Continue with other files
-        }
-      }
+      void this.processFileAsync(
+        kbFile.id,
+        knowledgeBaseId,
+        organizationId,
+        cloudinaryResult.secure_url,
+        file.mimetype,
+      );
 
       // Update knowledge base status
       await knowledgeBase.update({
         status: KnowledgeBaseStatus.PROCESSING,
-        total_documents: knowledgeBase.total_documents + uploadedFiles.length,
+        total_documents: knowledgeBase.total_documents + 1,
       });
 
-      return uploadedFiles;
+      return kbFile;
     } catch (error) {
-      this.logger.error('Failed to upload files', error);
+      this.logger.error(`Failed to upload file ${file.originalname}`, error);
       throw error;
     }
   }
@@ -298,6 +291,7 @@ export class KnowledgeBaseService {
       const tempFilePath = await this.downloadFile(fileUrl, fileId);
 
       try {
+        console.log(`trying Processing file: ${fileId} at ${tempFilePath}`);
         // Extract text
         this.logger.log(`Extracting text from file: ${fileId}`);
         const extracted = await this.fileProcessorService.extractText(
@@ -507,7 +501,7 @@ export class KnowledgeBaseService {
    * Helper: Extract Cloudinary public_id from storage path
    */
   private extractPublicIdFromPath(storagePath: string): string | null {
-    // Cloudinary public_id is typically the path without extension
+    // Raw Cloudinary assets keep their extension in the public ID.
     return storagePath;
   }
 

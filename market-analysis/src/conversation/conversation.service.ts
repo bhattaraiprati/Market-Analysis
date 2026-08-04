@@ -10,7 +10,6 @@ import { Message, MessageRole, MessageStatus } from '../models/message.model';
 import { Persona } from '../models/persona.model';
 import { ConversationOrchestratorAgent } from '../agents/conversation-orchestrator/conversation-orchestrator.agent';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
-import { SearcherAgent } from '../agents/searcher/searcher.agent';
 
 @Injectable()
 export class ConversationService {
@@ -25,7 +24,6 @@ export class ConversationService {
     private personaModel: typeof Persona,
     private conversationOrchestrator: ConversationOrchestratorAgent,
     private knowledgeBaseService: KnowledgeBaseService,
-    private searcherAgent: SearcherAgent,
   ) {}
 
   /**
@@ -245,13 +243,13 @@ export class ConversationService {
           personaConfig,
           conversationHistory,
           knowledgeBaseService: this.knowledgeBaseService,
-          searchService: {
-            search: async (query: string) => {
-              // Use searcher agent for web search
-              const searchResult = await this.searcherAgent.searchWeb(query, 5);
-              return searchResult;
-            },
-          },
+          // TODO: Implement web search functionality
+          // searchService: {
+          //   search: async (query: string) => {
+          //     // Web search not yet implemented
+          //     return [];
+          //   },
+          // },
         },
       });
 

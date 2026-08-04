@@ -8,16 +8,15 @@ import {
   Delete,
   UseGuards,
   UseInterceptors,
-  UploadedFiles,
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
-  Query,
   HttpStatus,
   HttpCode,
+  UploadedFile,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import 'multer';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
@@ -122,39 +121,45 @@ export class KnowledgeBaseController {
   }
 
   /**
-   * Upload files to a knowledge base
+   * Upload one file to a knowledge base
    * Supports: PDF, DOCX, TXT
    */
   @Post(':id/files')
-  @UseInterceptors(FilesInterceptor('files', 10)) // Max 10 files at once
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
   @HttpCode(HttpStatus.CREATED)
-  async uploadFiles(
+  async uploadFile(
     @Param('id') id: string,
-    @UploadedFiles(
+    @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }), // 50MB per file
+          new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
           new FileTypeValidator({
-            fileType: /(pdf|docx?|txt|text\/plain|application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/,
+            fileType:
+              /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain)$/,
           }),
         ],
         fileIsRequired: true,
       }),
     )
-    files: Express.Multer.File[],
+    file: Express.Multer.File,
     @CurrentUser() user: any,
   ) {
-    const uploadedFiles = await this.knowledgeBaseService.uploadFiles(
+    const uploadedFile = await this.knowledgeBaseService.uploadFile(
       id,
-      files,
+      file,
       user.organizationId,
     );
 
     return {
       success: true,
-      message: `${files.length} file(s) uploaded and queued for processing`,
-      data: uploadedFiles,
-      info: 'Files are being processed in the background. Check the file status for processing updates.',
+      message: 'File uploaded and queued for processing',
+      data: uploadedFile,
+      info: 'The file is being processed in the background. Check its status for processing updates.',
     };
   }
 

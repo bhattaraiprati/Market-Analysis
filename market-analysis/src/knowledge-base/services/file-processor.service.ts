@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import mammoth from 'mammoth';
 import * as fs from 'fs';
 import * as path from 'path';
-const pdf = require('pdf-parse');
+import { PDFParse } from 'pdf-parse';
 
 
 export interface ProcessedFile {
@@ -74,17 +74,35 @@ export class FileProcessorService {
    * Extract text from PDF files using pdf-parse
    */
   private async extractFromPDF(filePath: string): Promise<ProcessedFile> {
+    let parser: PDFParse | undefined;
+
     try {
+      this.logger.log(`Extracting text from PDF: ${filePath}`);
       const dataBuffer = fs.readFileSync(filePath);
-      const textResult = await pdf.default(dataBuffer);
+
+      // pdf-parse v2 uses a parser instance rather than the v1
+      // `pdfParse(buffer)` function API.
+      parser = new PDFParse({ data: dataBuffer });
+      const textResult = await parser.getText();
 
       const text = textResult.text;
+
+      if (!text || text.trim().length === 0) {
+        throw new Error(
+          'PDF text extraction returned empty content. The file may be scanned/image-based.',
+        );
+      }
+
       const wordCount = this.countWords(text);
+
+      this.logger.log(
+        `Successfully extracted ${text.length} characters from PDF (${textResult.total} pages)`,
+      );
 
       return {
         text,
         metadata: {
-          pageCount: textResult.numpages,
+          pageCount: textResult.total,
           wordCount,
           charCount: text.length,
           extractionMethod: 'pdf-parse',
@@ -93,6 +111,8 @@ export class FileProcessorService {
     } catch (error: any) {
       this.logger.error('PDF extraction failed', error);
       throw new Error(`Failed to extract PDF: ${error.message}`);
+    } finally {
+      await parser?.destroy();
     }
   }
 
