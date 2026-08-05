@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/authStore';
 import {
   Building2,
   Globe,
@@ -44,6 +46,9 @@ const defaultCompetitors = [
 ];
 
 export default function OrganizationRegisterPage() {
+  const router = useRouter();
+  const { createOrganization, error, clearError } = useAuthStore();
+
   const [currentStep, setCurrentStep] = useState<StepType>('profile');
   const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -143,15 +148,33 @@ export default function OrganizationRegisterPage() {
     }
 
     setIsSubmitting(true);
+    clearError();
 
-    setTimeout(() => {
-      console.log('Organization Registration:', formData);
-      setIsSubmitting(false);
+    try {
+      // Map form data to API DTO
+      await createOrganization({
+        name: formData.companyName,
+        industry: formData.industry,
+        description: formData.description,
+        website: formData.website,
+        product_or_service: formData.offerings,
+        target_customers: formData.targetCustomers,
+        business_goals: formData.businessGoals,
+        current_challenges: formData.challenges,
+        known_competitors: formData.competitors,
+        company_size: formData.companySize,
+        location: formData.location,
+      });
+
       setShowSuccess(true);
+
       setTimeout(() => {
-        console.log('Redirecting to dashboard...');
+        router.push('/dashboard');
       }, 2500);
-    }, 1500);
+    } catch (err) {
+      console.error('Organization creation failed:', err);
+      setIsSubmitting(false);
+    }
   };
 
   const getCurrentStepIndex = () => {
@@ -316,6 +339,34 @@ export default function OrganizationRegisterPage() {
               style={{ border: '1px solid #bec9c8' }}
             >
               <form onSubmit={handleSubmit} className="space-y-8">
+                {/* Error Message */}
+                {error && (
+                  <div
+                    className="p-4 rounded-lg flex items-start gap-3"
+                    style={{
+                      backgroundColor: '#ffdad6',
+                      border: '1px solid #ba1a1a',
+                    }}
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ color: '#ba1a1a', fontSize: '20px', flexShrink: 0 }}
+                    >
+                      error
+                    </span>
+                    <p
+                      style={{
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: '14px',
+                        lineHeight: '20px',
+                        color: '#93000a',
+                      }}
+                    >
+                      {error}
+                    </p>
+                  </div>
+                )}
+
                 {/* Step 1: Profile */}
                 {currentStep === 'profile' && (
                   <div className="space-y-6 animate-fade-in">

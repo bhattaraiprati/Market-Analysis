@@ -1,767 +1,871 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { Clock8, Pencil } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { usePersonaStore } from '@/lib/stores/personaStore';
+import { useKnowledgeBaseStore } from '@/lib/stores/knowledgeBaseStore';
+import { CreatePersonaDto, Persona, PersonaRole } from '@/types/api';
+import { Plus, Search, Trash2, X } from 'lucide-react';
 
 export default function PersonasPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('Last Updated');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const {
+    personas,
+    isLoading,
+    error,
+    fetchPersonas,
+    fetchPersonaById,
+    createPersona,
+    updatePersona,
+    deletePersona,
+    assignKnowledgeBase,
+    removeKnowledgeBase,
+    clearError,
+  } = usePersonaStore();
 
-  const personas = [
-    {
-      id: 1,
-      name: 'Marketing Persona',
-      description: 'Focused on marketing automation and technical copywriting for SaaS products.',
-      icon: 'person_apron',
-      color: '#005657',
-      bgColor: 'rgba(0, 86, 87, 0.1)',
-      tags: ['Marketing', 'SaaS'],
-      tagColor: 'rgba(163, 237, 236, 0.3)',
-      updated: '2h ago'
-    },
-    {
-      id: 2,
-      name: 'Data Scientist',
-      description: 'Analyzing complex datasets and generating visual reports from raw CSV logs.',
-      icon: 'analytics',
-      color: '#793e01',
-      bgColor: 'rgba(255, 183, 128, 0.3)',
-      tags: ['Analytics', 'Python'],
-      tagColor: 'rgba(255, 183, 128, 0.2)',
-      updated: '1d ago'
-    },
-    {
-      id: 3,
-      name: 'Customer Success',
-      description: 'Patient and helpful persona designed to handle onboarding queries.',
-      icon: 'support_agent',
-      color: '#1c6d6d',
-      bgColor: 'rgba(163, 237, 236, 0.4)',
-      tags: ['Support', 'Empathetic'],
-      tagColor: 'rgba(163, 237, 236, 0.3)',
-      updated: '3d ago'
-    },
-    {
-      id: 4,
-      name: 'Senior Architect',
-      description: 'Provides high-level system design patterns and code review feedback.',
-      icon: 'terminal',
-      color: '#005657',
-      bgColor: 'rgba(0, 86, 87, 0.1)',
-      tags: ['Code', 'System Design'],
-      tagColor: 'rgba(163, 237, 236, 0.3)',
-      updated: '5d ago'
+  const { knowledgeBases, fetchKnowledgeBases } = useKnowledgeBaseStore();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
+  const [originalKnowledgeBaseIds, setOriginalKnowledgeBaseIds] = useState<string[]>([]);
+
+  // Form state
+  const [formData, setFormData] = useState<CreatePersonaDto>({
+    name: '',
+    description: '',
+    primary_focus_role: 'GENERAL_ASSISTANT',
+    knowledge_base_ids: [],
+    web_search_enabled: true,
+    external_data_sources_enabled: false,
+    avatar_url: '',
+    system_prompt: '',
+  });
+
+  useEffect(() => {
+    fetchPersonas();
+    fetchKnowledgeBases();
+  }, [fetchPersonas, fetchKnowledgeBases]);
+
+  const handleSavePersona = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: CreatePersonaDto = {
+        ...formData,
+        description: formData.description?.trim() || undefined,
+        avatar_url: formData.avatar_url?.trim() || undefined,
+        system_prompt: formData.system_prompt?.trim() || undefined,
+      };
+
+      if (editingPersonaId) {
+        const { knowledge_base_ids: selectedIds = [], ...personaFields } = payload;
+        await updatePersona(editingPersonaId, personaFields);
+
+        const knowledgeBasesToAdd = selectedIds.filter(
+          (id) => !originalKnowledgeBaseIds.includes(id)
+        );
+        const knowledgeBasesToRemove = originalKnowledgeBaseIds.filter(
+          (id) => !selectedIds.includes(id)
+        );
+
+        await Promise.all([
+          ...knowledgeBasesToAdd.map((id) => assignKnowledgeBase(editingPersonaId, id)),
+          ...knowledgeBasesToRemove.map((id) => removeKnowledgeBase(editingPersonaId, id)),
+        ]);
+        await fetchPersonas();
+      } else {
+        await createPersona(payload);
+      }
+
+      setShowCreateModal(false);
+      resetForm();
+    } catch (err) {
+      console.error('Failed to create persona:', err);
     }
-  ];
+  };
+
+  const handleDeletePersona = async () => {
+    if (!selectedPersonaId) return;
+    try {
+      await deletePersona(selectedPersonaId);
+      setShowDeleteModal(false);
+      setSelectedPersonaId(null);
+    } catch (err) {
+      console.error('Failed to delete persona:', err);
+    }
+  };
+
+  const resetForm = () => {
+    setEditingPersonaId(null);
+    setOriginalKnowledgeBaseIds([]);
+    setFormData({
+      name: '',
+      description: '',
+      primary_focus_role: 'GENERAL_ASSISTANT',
+      knowledge_base_ids: [],
+      web_search_enabled: true,
+      external_data_sources_enabled: false,
+      avatar_url: '',
+      system_prompt: '',
+    });
+  };
+
+  const populateEditForm = (persona: Persona) => {
+    const knowledgeBaseIds = persona.knowledge_bases?.map((knowledgeBase) => knowledgeBase.id) ?? [];
+    setEditingPersonaId(persona.id);
+    setOriginalKnowledgeBaseIds(knowledgeBaseIds);
+    setFormData({
+      name: persona.name,
+      description: persona.description ?? '',
+      primary_focus_role: persona.primary_focus_role,
+      knowledge_base_ids: knowledgeBaseIds,
+      web_search_enabled: persona.web_search_enabled,
+      external_data_sources_enabled: persona.external_data_sources_enabled,
+      avatar_url: persona.avatar_url ?? '',
+      system_prompt: persona.system_prompt ?? '',
+    });
+    setShowCreateModal(true);
+  };
+
+  const handleEditPersona = async (persona: Persona) => {
+    clearError();
+    try {
+      const detailedPersona = await fetchPersonaById(persona.id);
+      populateEditForm(detailedPersona);
+    } catch (err) {
+      console.error('Failed to load persona:', err);
+    }
+  };
+
+  const toggleKnowledgeBase = (knowledgeBaseId: string) => {
+    setFormData((current) => {
+      const selectedIds = current.knowledge_base_ids ?? [];
+      const isSelected = selectedIds.includes(knowledgeBaseId);
+
+      return {
+        ...current,
+        knowledge_base_ids: isSelected
+          ? selectedIds.filter((id) => id !== knowledgeBaseId)
+          : [...selectedIds, knowledgeBaseId],
+      };
+    });
+  };
+
+  const selectedKnowledgeBaseIds = formData.knowledge_base_ids ?? [];
+  const availableKnowledgeBases = knowledgeBases.filter(
+    (knowledgeBase) => !selectedKnowledgeBaseIds.includes(knowledgeBase.id)
+  );
+  const selectedKnowledgeBases = knowledgeBases.filter((knowledgeBase) =>
+    selectedKnowledgeBaseIds.includes(knowledgeBase.id)
+  );
+
+  const filteredPersonas = personas.filter((persona) =>
+    persona.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    persona.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const getRoleLabel = (role: PersonaRole): string => {
+    const labels: Record<PersonaRole, string> = {
+      COMPETITIVE_ANALYST: 'Competitive Analyst',
+      MARKET_RESEARCHER: 'Market Researcher',
+      CUSTOMER_SUCCESS_EXPERT: 'Customer Success',
+      BUSINESS_STRATEGIST: 'Business Strategist',
+      GENERAL_ASSISTANT: 'General Assistant',
+    };
+    return labels[role] || role;
+  };
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ backgroundColor: '#f8f9ff', fontFamily: 'Inter, sans-serif' }}
-    >
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
-
-      {/* Side Navigation */}
-      <aside
-        className={`fixed left-0 top-0 h-full flex flex-col py-6 px-4 z-50 transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-        style={{
-          width: '16rem',
-          backgroundColor: '#f8f9ff',
-          borderRight: '1px solid #bec9c8'
-        }}
-      >
-        {/* Close button for mobile */}
-        <button
-          className="lg:hidden absolute top-4 right-4 p-2"
-          onClick={() => setSidebarOpen(false)}
-          style={{ color: '#3f4948' }}
-        >
-          <span className="material-symbols-outlined">close</span>
-        </button>
-
-        <div className="mb-10 px-2 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: '#1a7070' }}
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{
-                fontVariationSettings: "'FILL' 1",
-                color: '#a4f1f0'
-              }}
-            >
-              smart_toy
-            </span>
-          </div>
-          <div>
-            <h1
-              className="font-bold"
-              style={{
-                fontFamily: 'Hanken Grotesk, sans-serif',
-                fontSize: '24px',
-                lineHeight: '32px',
-                fontWeight: '600',
-                color: '#005657'
-              }}
-            >
-              PersonaFlow
-            </h1>
-            <p
-              className="opacity-70"
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '12px',
-                lineHeight: '14px',
-                fontWeight: '500',
-                color: '#3f4948'
-              }}
-            >
-              AI Knowledge Hub
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-2">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#005657';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#3f4948';
-            }}
-          >
-            <span className="material-symbols-outlined">home</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Home
-            </span>
-          </Link>
-
-          {/* Personas - Active */}
-          <Link
-            href="/dashboard/personas"
-            className="relative flex items-center gap-3 px-4 py-3 rounded-lg font-bold transition-all duration-200"
-            style={{
-              color: '#005657',
-              borderLeft: '4px solid #005657',
-              backgroundColor: 'rgba(163, 237, 236, 0.3)'
-            }}
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              smart_toy
-            </span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Personas
-            </span>
-          </Link>
-
-          <Link
-            href="/dashboard/knowledge"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#005657';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#3f4948';
-            }}
-          >
-            <span className="material-symbols-outlined">database</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Knowledge Base
-            </span>
-          </Link>
-        </nav>
-
-        <div
-          className="mt-auto space-y-2 pt-6"
-          style={{ borderTop: '1px solid #bec9c8' }}
-        >
-          <Link
-            href="/dashboard/profile"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <span className="material-symbols-outlined">account_circle</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Profile
-            </span>
-          </Link>
-
-          <Link
-            href="/login"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <span className="material-symbols-outlined" style={{ color: '#ba1a1a' }}>
-              logout
-            </span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Logout
-            </span>
-          </Link>
-        </div>
-      </aside>
-
-      {/* Top App Bar */}
-      <header
-        className="fixed top-0 right-0 w-full lg:w-[calc(100%-16rem)] h-16 flex justify-between items-center px-4 lg:px-8 z-40"
-        style={{
-          backgroundColor: '#f8f9ff',
-          borderBottom: '1px solid #bec9c8'
-        }}
-      >
-        <div className="flex items-center gap-4">
-          {/* Hamburger Menu for Mobile */}
-          <button
-            className="lg:hidden p-2"
-            onClick={() => setSidebarOpen(true)}
-            style={{ color: '#005657' }}
-          >
-            <span className="material-symbols-outlined">menu</span>
-          </button>
-
-          <span
-            className="font-semibold"
-            style={{
-              fontFamily: 'Hanken Grotesk, sans-serif',
-              fontSize: 'clamp(18px, 3vw, 24px)',
-              lineHeight: '32px',
-              fontWeight: '600',
-              color: '#0b1c30'
-            }}
-          >
-            Personas
-          </span>
-          <div
-            className="hidden md:block h-4 w-px"
-            style={{ backgroundColor: '#bec9c8' }}
-          ></div>
-          <span
-            className="hidden md:inline text-sm"
-            style={{
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '14px',
-              lineHeight: '20px',
-              color: '#3f4948'
-            }}
-          >
-            Manage your AI identities
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 lg:gap-4">
-          <button
-            className="hidden sm:flex items-center gap-2 px-3 lg:px-4 py-2 font-bold transition-opacity"
-            style={{
-              color: '#005657',
-              fontFamily: 'Geist, sans-serif',
-              fontSize: '14px',
-              lineHeight: '16px',
-              fontWeight: '500',
-              letterSpacing: '0.02em'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-          >
-            Switch Persona
-            <span className="material-symbols-outlined">expand_more</span>
-          </button>
-          <div
-            className="w-8 h-8 rounded-full overflow-hidden"
-            style={{ border: '1px solid #6f7979' }}
-          >
-            <div
-              className="w-full h-full flex items-center justify-center"
-              style={{
-                backgroundColor: '#dce9ff',
-                color: '#005657',
-                fontWeight: '600',
-                fontSize: '12px'
-              }}
-            >
-              AH
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="pt-16 lg:pt-24 pb-12 px-4 lg:px-10 min-h-screen lg:ml-64">
-        {/* Toolbar: Search & Actions */}
-        <section className="mb-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
-          <div className="relative w-full max-w-lg group">
-            <span
-              className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 transition-colors"
-              style={{ color: '#6f7979' }}
-            >
-              search
-            </span>
-            <input
-              className="w-full pl-12 pr-4 py-3 rounded-xl outline-none transition-all"
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #bec9c8',
-                fontFamily: 'Inter, sans-serif',
-                fontSize: '16px',
-                lineHeight: '24px',
-                color: '#0b1c30'
-              }}
-              placeholder="Search personas by name, role or expertise..."
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={(e) => {
-                e.target.style.boxShadow = '0 0 0 2px rgba(0, 86, 87, 0.2)';
-                e.target.style.borderColor = '#005657';
-                const icon = e.target.previousElementSibling as HTMLElement;
-                if (icon) icon.style.color = '#005657';
-              }}
-              onBlur={(e) => {
-                e.target.style.boxShadow = 'none';
-                e.target.style.borderColor = '#bec9c8';
-                const icon = e.target.previousElementSibling as HTMLElement;
-                if (icon) icon.style.color = '#6f7979';
-              }}
-            />
-          </div>
-
-          <div className="flex items-center gap-3 lg:gap-4">
-            <div
-              className="flex items-center gap-2 rounded-xl px-3 lg:px-4 py-3 transition-colors cursor-pointer group"
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #bec9c8'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = '#6f7979'}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = '#bec9c8'}
-            >
-              <span className="material-symbols-outlined" style={{ color: '#6f7979' }}>
-                sort
-              </span>
-              <select
-                className="bg-transparent border-none focus:ring-0 cursor-pointer p-0 text-sm"
+    <div className="min-h-screen" style={{ backgroundColor: '#f8f9ff', fontFamily: 'Inter, sans-serif' }}>
+      <main className="min-h-screen">
+        <div className="p-6 lg:p-10">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+            <div>
+              <h1
                 style={{
-                  fontFamily: 'Geist, sans-serif',
-                  fontSize: '14px',
-                  lineHeight: '16px',
-                  fontWeight: '500',
-                  letterSpacing: '0.02em',
-                  color: '#0b1c30'
+                  fontFamily: 'Hanken Grotesk, sans-serif',
+                  fontSize: '32px',
+                  fontWeight: '700',
+                  color: '#005657',
                 }}
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
               >
-                <option>Last Updated</option>
-                <option>Name (A-Z)</option>
-                <option>Creation Date</option>
-                <option>Most Active</option>
-              </select>
+                AI Personas Management
+              </h1>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3f4948' }}>
+                {filteredPersonas.length} persona{filteredPersonas.length !== 1 ? 's' : ''}
+              </p>
             </div>
 
             <button
-              className="px-4 lg:px-6 py-3 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-all"
+              onClick={() => {
+                resetForm();
+                setShowCreateModal(true);
+              }}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all shadow-sm"
               style={{
                 backgroundColor: '#1a7070',
                 color: '#ffffff',
-                boxShadow: '0 4px 6px rgba(0, 86, 87, 0.1)'
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
             >
-              <span className="material-symbols-outlined">add</span>
-              <span className="hidden sm:inline">Create New</span>
-              <span className="sm:hidden">New</span>
+              <Plus size={18} />
+              Create Persona
             </button>
           </div>
-        </section>
 
-        {/* Persona Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {/* Create New Persona Card */}
-          <button
-            className="group flex flex-col items-center justify-center p-8 rounded-2xl transition-all duration-300"
-            style={{
-              backgroundColor: '#eff4ff',
-              border: '2px dashed #bec9c8',
-              minHeight: '340px'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(0, 86, 87, 0.5)';
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#bec9c8';
-              e.currentTarget.style.backgroundColor = '#eff4ff';
-            }}
-          >
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"
-              style={{
-                backgroundColor: '#d3e4fe',
-                color: '#005657'
-              }}
-            >
-              <span className="material-symbols-outlined text-4xl">add_circle</span>
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative max-w-md">
+              <Search
+                size={20}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: '#6f7979' }}
+              />
+              <input
+                type="text"
+                placeholder="Search personas..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-lg outline-none transition-all"
+                style={{
+                  border: '1px solid #bec9c8',
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: '16px',
+                  color: '#0b1c30',
+                  backgroundColor: '#ffffff',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#1a7070';
+                  e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#bec9c8';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
             </div>
-            <span
-              className="group-hover:text-primary transition-colors"
-              style={{
-                fontFamily: 'Hanken Grotesk, sans-serif',
-                fontSize: '24px',
-                lineHeight: '32px',
-                fontWeight: '600',
-                color: '#3f4948'
-              }}
-            >
-              New Persona
-            </span>
-            <p
-              className="text-center mt-3 max-w-[200px]"
-              style={{
-                fontFamily: 'Inter, sans-serif',
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6f7979'
-              }}
-            >
-              Define a new AI identity with specific knowledge and tone.
-            </p>
-          </button>
+          </div>
 
-          {/* Persona Cards */}
-          {personas.map((persona) => (
+          {/* Error Message */}
+          {error && (
             <div
-              key={persona.id}
-              className="group relative rounded-2xl overflow-hidden transition-all duration-300"
+              className="mb-6 p-4 rounded-lg flex items-start justify-between gap-3"
               style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #bec9c8',
-                background: `linear-gradient(135deg, ${persona.bgColor.replace('0.1', '0.05')} 0%, rgba(255, 255, 255, 0) 100%)`
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0, 86, 87, 0.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
+                backgroundColor: '#ffdad6',
+                border: '1px solid #ba1a1a',
               }}
             >
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-6">
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                    style={{
-                      backgroundColor: persona.bgColor,
-                      color: persona.color
-                    }}
-                  >
-                    <span
-                      className="material-symbols-outlined text-3xl"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      {persona.icon}
-                    </span>
-                  </div>
-                  <button
-                    className="p-2 rounded-full transition-colors"
-                    style={{ color: '#6f7979' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <span className="material-symbols-outlined">more_vert</span>
-                  </button>
-                </div>
-
-                <h3
-                  className="mb-1"
-                  style={{
-                    fontFamily: 'Hanken Grotesk, sans-serif',
-                    fontSize: '24px',
-                    lineHeight: '32px',
-                    fontWeight: '600',
-                    color: '#0b1c30'
-                  }}
-                >
-                  {persona.name}
-                </h3>
-
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined" style={{ color: '#ba1a1a', fontSize: '20px' }}>
+                  error
+                </span>
                 <p
-                  className="mb-4 line-clamp-2"
                   style={{
                     fontFamily: 'Inter, sans-serif',
                     fontSize: '14px',
                     lineHeight: '20px',
-                    color: '#3f4948'
+                    color: '#93000a',
                   }}
                 >
-                  {persona.description}
+                  {error}
                 </p>
+              </div>
+              <button onClick={clearError} style={{ color: '#ba1a1a' }}>
+                <X size={20} />
+              </button>
+            </div>
+          )}
 
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {persona.tags.map((tag, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1 rounded-full"
-                      style={{
-                        backgroundColor: persona.tagColor,
-                        color: persona.color,
-                        fontFamily: 'Geist, sans-serif',
-                        fontSize: '12px',
-                        lineHeight: '14px',
-                        fontWeight: '500'
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-
-                <div
-                  className="flex items-center justify-between pt-4 mt-auto"
-                  style={{ borderTop: '1px solid #bec9c8' }}
-                >
-                  <span
-                    className="flex items-center gap-1"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '12px',
-                      lineHeight: '14px',
-                      fontWeight: '500',
-                      color: '#6f7979'
-                    }}
-                  >
-                    <Clock8 size={14} />
-                    Updated {persona.updated}
-                  </span>
-                  <button
-                    className="font-bold flex items-center gap-1 hover:underline"
-                    style={{
-                      color: '#005657',
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '700',
-                      letterSpacing: '0.02em'
-                    }}
-                  >
-                    Edit
-                    {/* <span className="material-symbols-outlined text-[10px]">edit</span> */}
-                    <Pencil size={14} />
-                  </button>
-                </div>
+          {/* Loading State */}
+          {isLoading && personas.length === 0 ? (
+            <div className="flex justify-center items-center py-20">
+              <div className="text-center">
+                <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"
+                  style={{ borderColor: '#1a7070', borderTopColor: 'transparent' }}
+                ></div>
+                <p style={{ fontFamily: 'Inter, sans-serif', color: '#3f4948' }}>Loading personas...</p>
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Pro Tip Banner */}
-        <section
-          className="mt-16 p-6 lg:p-10 rounded-3xl relative overflow-hidden"
-          style={{
-            backgroundColor: '#1a7070',
-            color: '#ffffff'
-          }}
-        >
-          {/* Background Decoration */}
-          <div
-            className="absolute top-0 right-0 w-64 h-64 rounded-full -translate-y-1/2 translate-x-1/2"
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              filter: 'blur(80px)'
-            }}
-          ></div>
-          <div
-            className="absolute bottom-0 left-0 w-96 h-96 rounded-full translate-y-1/2 -translate-x-1/2"
-            style={{
-              backgroundColor: 'rgba(163, 237, 236, 0.1)',
-              filter: 'blur(80px)'
-            }}
-          ></div>
-
-          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-10">
-            <div className="max-w-xl">
-              <span
-                className="inline-block px-3 py-1 rounded-full mb-4"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  fontFamily: 'Geist, sans-serif',
-                  fontSize: '14px',
-                  lineHeight: '16px',
-                  fontWeight: '500',
-                  letterSpacing: '0.02em'
-                }}
+          ) : filteredPersonas.length === 0 ? (
+            <div className="text-center py-20">
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(26, 112, 112, 0.1)' }}
               >
-                Pro Tip
-              </span>
-              <h2
-                className="mb-4"
+                <span className="material-symbols-outlined text-5xl" style={{ color: '#1a7070' }}>
+                  smart_toy
+                </span>
+              </div>
+              <h3
                 style={{
                   fontFamily: 'Hanken Grotesk, sans-serif',
-                  fontSize: 'clamp(24px, 4vw, 32px)',
-                  lineHeight: 'clamp(32px, 4.5vw, 40px)',
+                  fontSize: '20px',
                   fontWeight: '600',
-                  letterSpacing: '-0.01em'
+                  color: '#0b1c30',
+                  marginBottom: '8px',
                 }}
               >
-                Boost Persona Accuracy with Knowledge Injection
-              </h2>
-              <p
-                className="mb-8 opacity-90"
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: '16px',
-                  lineHeight: '24px'
-                }}
-              >
-                Connect your Notion, Google Drive, or local PDF files to give your personas deep,
-                context-aware intelligence tailored to your specific workflows.
+                {searchQuery ? 'No personas found' : 'No personas yet'}
+              </h3>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3f4948' }}>
+                {searchQuery ? 'Try adjusting your search' : 'Create your first AI persona to get started'}
               </p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <button
-                  className="px-6 lg:px-8 py-3 rounded-xl font-bold active:scale-95 transition-all"
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredPersonas.map((persona) => (
+                <div
+                  key={persona.id}
+                  className="bg-white rounded-xl p-6 transition-all cursor-pointer hover:shadow-lg"
                   style={{
-                    backgroundColor: '#ffffff',
-                    color: '#005657',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    border: '1px solid #bec9c8',
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9ff'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
+                  onClick={() => handleEditPersona(persona)}
                 >
-                  Connect Knowledge Base
+                  <div className="flex items-start justify-between mb-4">
+                    <div
+                      className="w-12 h-12 rounded-lg flex items-center justify-center"
+                      style={{
+                        backgroundColor: 'rgba(26, 112, 112, 0.1)',
+                        color: '#005657',
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-2xl">smart_toy</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPersonaId(persona.id);
+                        setShowDeleteModal(true);
+                      }}
+                      className="p-2 rounded-lg transition-colors"
+                      style={{ color: '#6f7979' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#ffebee';
+                        e.currentTarget.style.color = '#ba1a1a';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = '#6f7979';
+                      }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+
+                  <h3
+                    className="mb-2"
+                    style={{
+                      fontFamily: 'Hanken Grotesk, sans-serif',
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#0b1c30',
+                    }}
+                  >
+                    {persona.name}
+                  </h3>
+
+                  <p
+                    className="mb-4 line-clamp-2"
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: '14px',
+                      lineHeight: '20px',
+                      color: '#3f4948',
+                    }}
+                  >
+                    {persona.description || 'No description'}
+                  </p>
+
+                  <div className="flex items-center justify-between">
+                    <span
+                      className="px-3 py-1 rounded-full text-xs"
+                      style={{
+                        backgroundColor: 'rgba(163, 237, 236, 0.3)',
+                        color: '#005657',
+                        fontFamily: 'Geist, sans-serif',
+                        fontWeight: '500',
+                      }}
+                    >
+                      {getRoleLabel(persona.primary_focus_role)}
+                    </span>
+
+                    {persona.web_search_enabled && (
+                      <span className="material-symbols-outlined text-sm" style={{ color: '#1a7070' }} title="Web search enabled">
+                        public
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Create/Edit Persona Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className="bg-white rounded-xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+            style={{ border: '1px solid #bec9c8' }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2
+                style={{
+                  fontFamily: 'Hanken Grotesk, sans-serif',
+                  fontSize: '24px',
+                  fontWeight: '600',
+                  color: '#0b1c30',
+                }}
+              >
+                {editingPersonaId ? 'Edit Persona' : 'Create New Persona'}
+              </h2>
+              <button onClick={() => {
+                setShowCreateModal(false);
+                resetForm();
+              }} style={{ color: '#6f7979' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePersona} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="name"
+                  style={{
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#0b1c30',
+                  }}
+                >
+                  Persona Name *
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '16px',
+                  }}
+                  placeholder="e.g., Marketing Expert"
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#1a7070';
+                    e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#bec9c8';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="description"
+                  style={{
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#0b1c30',
+                  }}
+                >
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all resize-none"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '16px',
+                    minHeight: '100px',
+                  }}
+                  placeholder="Describe the persona's role and expertise..."
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#1a7070';
+                    e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#bec9c8';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="role"
+                  style={{
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#0b1c30',
+                  }}
+                >
+                  Primary Role *
+                </label>
+                <select
+                  id="role"
+                  required
+                  value={formData.primary_focus_role}
+                  onChange={(e) => setFormData({ ...formData, primary_focus_role: e.target.value as PersonaRole })}
+                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '16px',
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#1a7070';
+                    e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#bec9c8';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                >
+                  <option value="GENERAL_ASSISTANT">General Assistant</option>
+                  <option value="COMPETITIVE_ANALYST">Competitive Analyst</option>
+                  <option value="MARKET_RESEARCHER">Market Researcher</option>
+                  <option value="CUSTOMER_SUCCESS_EXPERT">Customer Success Expert</option>
+                  <option value="BUSINESS_STRATEGIST">Business Strategist</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="avatar_url"
+                  style={{
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#0b1c30',
+                  }}
+                >
+                  Avatar URL
+                </label>
+                <input
+                  id="avatar_url"
+                  type="url"
+                  value={formData.avatar_url ?? ''}
+                  onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })}
+                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '16px',
+                  }}
+                  placeholder="https://example.com/avatar.png"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="system_prompt"
+                  style={{
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#0b1c30',
+                  }}
+                >
+                  System Prompt
+                </label>
+                <textarea
+                  id="system_prompt"
+                  value={formData.system_prompt ?? ''}
+                  onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all resize-y"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '16px',
+                    minHeight: '110px',
+                  }}
+                  placeholder="Define how this persona should behave and respond..."
+                />
+              </div>
+
+              <fieldset>
+                <div className="flex items-end justify-between gap-4 mb-2">
+                  <div>
+                    <legend
+                      style={{
+                        fontFamily: 'Geist, sans-serif',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: '#0b1c30',
+                      }}
+                    >
+                      Knowledge Bases
+                    </legend>
+                    <p className="mt-1 text-xs" style={{ color: '#6f7979' }}>
+                      Choose one or more knowledge bases for this persona.
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium" style={{ color: '#1a7070' }}>
+                    {selectedKnowledgeBases.length} selected
+                  </span>
+                </div>
+
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 overflow-hidden rounded-lg"
+                  style={{ border: '1px solid #bec9c8' }}
+                >
+                  <div className="md:border-r" style={{ borderColor: '#bec9c8' }}>
+                    <div
+                      className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+                      style={{ backgroundColor: '#f8f9ff', color: '#3f4948' }}
+                    >
+                      <span>Available knowledge bases</span>
+                      <span>Files</span>
+                    </div>
+                    <div className="h-52 overflow-y-auto">
+                      {availableKnowledgeBases.length > 0 ? (
+                        availableKnowledgeBases.map((knowledgeBase) => (
+                          <button
+                            key={knowledgeBase.id}
+                            type="button"
+                            onClick={() => toggleKnowledgeBase(knowledgeBase.id)}
+                            className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[#eef7f7] focus:bg-[#eef7f7] focus:outline-none"
+                            style={{ borderColor: '#e2e8e7' }}
+                            aria-label={`Add ${knowledgeBase.name}`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium" style={{ color: '#0b1c30' }}>
+                                {knowledgeBase.name}
+                              </span>
+                              <span className="block truncate text-xs" style={{ color: '#6f7979' }}>
+                                {knowledgeBase.category || 'Uncategorized'}
+                              </span>
+                            </span>
+                            <span className="flex items-center gap-2 text-xs" style={{ color: '#3f4948' }}>
+                              {knowledgeBase.total_documents ?? knowledgeBase.file_count ?? 0}
+                              <Plus size={16} style={{ color: '#1a7070' }} />
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex h-full items-center justify-center px-6 text-center text-sm" style={{ color: '#6f7979' }}>
+                          {knowledgeBases.length === 0
+                            ? 'No knowledge bases are available.'
+                            : 'All knowledge bases are selected.'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+                      style={{ backgroundColor: '#eef7f7', color: '#1a7070' }}
+                    >
+                      <span>Selected</span>
+                      <span>Remove</span>
+                    </div>
+                    <div className="h-52 overflow-y-auto">
+                      {selectedKnowledgeBases.length > 0 ? (
+                        selectedKnowledgeBases.map((knowledgeBase) => (
+                          <button
+                            key={knowledgeBase.id}
+                            type="button"
+                            onClick={() => toggleKnowledgeBase(knowledgeBase.id)}
+                            className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[#fff4f4] focus:bg-[#fff4f4] focus:outline-none"
+                            style={{ borderColor: '#e2e8e7' }}
+                            aria-label={`Remove ${knowledgeBase.name}`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium" style={{ color: '#0b1c30' }}>
+                                {knowledgeBase.name}
+                              </span>
+                              <span className="block truncate text-xs" style={{ color: '#6f7979' }}>
+                                {knowledgeBase.category || 'Uncategorized'}
+                              </span>
+                            </span>
+                            <X size={16} style={{ color: '#ba1a1a' }} />
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex h-full items-center justify-center px-6 text-center text-sm" style={{ color: '#6f7979' }}>
+                          Click a knowledge base on the left to select it.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.web_search_enabled}
+                    onChange={(e) => setFormData({ ...formData, web_search_enabled: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#1a7070' }}
+                  />
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#0b1c30' }}>
+                    Enable Web Search
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.external_data_sources_enabled}
+                    onChange={(e) =>
+                      setFormData({ ...formData, external_data_sources_enabled: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#1a7070' }}
+                  />
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#0b1c30' }}>
+                    External Data Sources
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-4 pt-6 border-t" style={{ borderColor: '#bec9c8' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
+                  className="px-6 py-2.5 rounded-lg transition-colors"
+                  style={{
+                    border: '1px solid #bec9c8',
+                    color: '#3f4948',
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9ff')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  Cancel
                 </button>
                 <button
-                  className="font-bold px-6 py-3 rounded-xl transition-all"
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-6 py-2.5 rounded-lg transition-all shadow-sm"
+                  style={{
+                    backgroundColor: isLoading ? '#6f7979' : '#1a7070',
+                    color: '#ffffff',
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isLoading) e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
-                  Learn More
+                  {isLoading
+                    ? editingPersonaId
+                      ? 'Saving...'
+                      : 'Creating...'
+                    : editingPersonaId
+                      ? 'Save Changes'
+                      : 'Create Persona'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl"
+            style={{ border: '1px solid #bec9c8' }}
+          >
+            <div className="flex items-start gap-4 mb-6">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#ffebee' }}
+              >
+                <span className="material-symbols-outlined text-2xl" style={{ color: '#ba1a1a' }}>
+                  warning
+                </span>
+              </div>
+              <div>
+                <h3
+                  className="mb-2"
+                  style={{
+                    fontFamily: 'Hanken Grotesk, sans-serif',
+                    fontSize: '20px',
+                    fontWeight: '600',
+                    color: '#0b1c30',
+                  }}
+                >
+                  Delete Persona
+                </h3>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#3f4948' }}>
+                  Are you sure you want to delete this persona? This action cannot be undone.
+                </p>
               </div>
             </div>
 
-            <div className="hidden lg:block w-72 h-72 relative">
-              <div
-                className="w-full h-full rounded-[2.5rem] flex items-center justify-center relative"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(12px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            <div className="flex items-center justify-end gap-4">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedPersonaId(null);
                 }}
+                className="px-6 py-2.5 rounded-lg transition-colors"
+                style={{
+                  border: '1px solid #bec9c8',
+                  color: '#3f4948',
+                  fontFamily: 'Geist, sans-serif',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9ff')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
-                <span className="material-symbols-outlined opacity-40" style={{ fontSize: '8rem' }}>
-                  hub
-                </span>
-                <div
-                  className="absolute -top-4 -left-4 w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg"
-                  style={{
-                    backgroundColor: '#a3edec',
-                    color: '#005657',
-                    animation: 'bounce 3s infinite'
-                  }}
-                >
-                  <span
-                    className="material-symbols-outlined text-3xl"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    description
-                  </span>
-                </div>
-                <div
-                  className="absolute -bottom-4 -right-4 w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg"
-                  style={{
-                    backgroundColor: '#ffb780',
-                    color: '#793e01',
-                    animation: 'pulse 2s infinite'
-                  }}
-                >
-                  <span
-                    className="material-symbols-outlined text-3xl"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    folder_shared
-                  </span>
-                </div>
-              </div>
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePersona}
+                disabled={isLoading}
+                className="px-6 py-2.5 rounded-lg transition-all shadow-sm"
+                style={{
+                  backgroundColor: isLoading ? '#6f7979' : '#ba1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'Geist, sans-serif',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoading) e.currentTarget.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+              >
+                {isLoading ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
-        </section>
-      </main>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -51,20 +51,38 @@ class ApiClient {
 
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('access_token');
+      // Check both localStorage and cookies
+      const localToken = localStorage.getItem('access_token');
+      if (localToken) return localToken;
+
+      // Fallback to cookie
+      const cookies = document.cookie.split('; ');
+      const tokenCookie = cookies.find(row => row.startsWith('access_token='));
+      return tokenCookie ? tokenCookie.split('=')[1] : null;
     }
     return null;
   }
 
   private setToken(token: string): void {
     if (typeof window !== 'undefined') {
+      // Store in localStorage
       localStorage.setItem('access_token', token);
+
+      // Also store in cookie for middleware access
+      // Set cookie with 5 hours expiry (matching token expiry)
+      const expiryDate = new Date();
+      expiryDate.setTime(expiryDate.getTime() + (5 * 60 * 60 * 1000)); // 5 hours
+      document.cookie = `access_token=${token}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
     }
   }
 
   private clearToken(): void {
     if (typeof window !== 'undefined') {
+      // Remove from localStorage
       localStorage.removeItem('access_token');
+
+      // Remove cookie
+      document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     }
   }
 

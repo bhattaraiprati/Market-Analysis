@@ -3,6 +3,11 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  role?: string;
+  profilePicture?: string;
+  organizationId?: string;
+  organizationName?: string;
+  organizationStatus?: string;
   created_at?: string;
 }
 
@@ -24,8 +29,11 @@ export interface Organization {
 }
 
 export interface AuthResponse {
-  access_token: string;
+  token: string;
   user: User;
+  expiresIn: string;
+  expiresAt: number;
+  message: string;
 }
 
 export interface RegisterDto {
@@ -55,7 +63,7 @@ export interface CreateOrganizationDto {
 
 export interface UserProfile {
   user: User;
-  organization: Organization | null;
+  organization?: Organization | null;
 }
 
 // Knowledge Base Types
@@ -66,8 +74,16 @@ export interface KnowledgeBase {
   category?: string;
   tags?: string[];
   visibility: 'PRIVATE' | 'ORGANIZATION' | 'PUBLIC';
+  type?: string;
+  status?: string;
+  indexing_status?: string;
   file_count?: number;
+  total_documents?: number;
   total_chunks?: number;
+  total_tokens?: number | string;
+  indexed_at?: string | null;
+  usage_count?: number;
+  last_used_at?: string | null;
   created_by: string;
   organization_id: string;
   created_at: string;
@@ -76,12 +92,24 @@ export interface KnowledgeBase {
 
 export interface KBFile {
   id: string;
-  file_name: string;
-  file_type: 'PDF' | 'DOCX' | 'TXT';
-  file_size: number;
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  chunk_count?: number;
+  knowledge_base_id: string;
+  original_filename: string;
+  file_type: string;
+  file_size_bytes: number | string;
+  mime_type: string;
+  storage_url?: string;
+  processing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  processing_error?: string | null;
+  processed_at?: string | null;
+  chunk_count: number;
+  chunk_strategy?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
+  indexed?: boolean;
+  indexed_at?: string | null;
   uploaded_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CreateKnowledgeBaseDto {

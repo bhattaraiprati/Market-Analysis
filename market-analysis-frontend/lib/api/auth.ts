@@ -22,12 +22,12 @@ export const authApi = {
   // Login user
   login: async (data: LoginDto) => {
     const response = await axiosInstance.post<AuthResponse>('/auth/login', data);
-    const { access_token, user } = response.data;
+    const { token, user } = response.data;
 
-    // Save token
-    apiClient.saveToken(access_token);
+    // Save token to localStorage and cookie
+    apiClient.saveToken(token);
 
-    return { access_token, user };
+    return { token, user };
   },
 
   // Logout user

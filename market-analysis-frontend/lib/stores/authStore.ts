@@ -60,15 +60,35 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authApi.login(data);
+
+          // Check if user already has organization from login response
+          const hasOrganization = response.user.organizationId != null;
+
           set({
             user: response.user,
+            organization: hasOrganization ? {
+              id: response.user.organizationId!,
+              name: response.user.organizationName || '',
+              industry: '',
+              owner_id: response.user.id,
+            } as Organization : null,
             isAuthenticated: true,
-            isLoading: false,
             error: null,
           });
 
-          // Load full profile including organization
-          await get().loadProfile();
+          // Ensure token is saved before loading profile
+          // Add a small delay to ensure localStorage write completes
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Load full profile including organization details
+          try {
+            await get().loadProfile();
+          } catch (profileError) {
+            // If profile load fails, we still have basic user info from login
+            console.error('Failed to load full profile:', profileError);
+          }
+
+          set({ isLoading: false });
         } catch (error: any) {
           const errorMessage =
             error.response?.data?.message || 'Invalid email or password';
@@ -98,9 +118,22 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const profile = await authApi.getProfile();
+
+          // Handle organization data from either profile.organization or user object
+          let organization = profile.organization || null;
+
+          if (!organization && profile.user.organizationId) {
+            organization = {
+              id: profile.user.organizationId,
+              name: profile.user.organizationName || '',
+              industry: '',
+              owner_id: profile.user.id,
+            } as Organization;
+          }
+
           set({
             user: profile.user,
-            organization: profile.organization,
+            organization: organization,
             isAuthenticated: true,
             isLoading: false,
           });

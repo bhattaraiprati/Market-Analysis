@@ -1,324 +1,86 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useKnowledgeBaseStore } from '@/lib/stores/knowledgeBaseStore';
 
 export default function KnowledgeBasePage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const router = useRouter();
+  const {
+    knowledgeBases,
+    fetchKnowledgeBases,
+    deleteKB,
+    isLoading,
+    error,
+    clearError,
+  } = useKnowledgeBaseStore();
 
-  const knowledgeBases = [
-    {
-      id: 1,
-      name: 'Market Competitor',
-      details: '42 PDF Files • 128MB',
-      icon: 'description',
-      iconBg: '#a3edec',
-      iconColor: '#005657',
-      status: 'Created',
-      type: 'External Docs',
-      createdBy: 'Alex Smith',
-      avatar: 'AS',
-      avatarBg: '#96551a',
-      lastModified: '2 hours ago'
-    },
-    {
-      id: 2,
-      name: 'Company Database',
-      details: 'SQL Connector • 1.2M Rows',
-      icon: 'table_chart',
-      iconBg: '#ffdcc4',
-      iconColor: '#793e01',
-      status: 'Created',
-      type: 'Dynamic Data',
-      createdBy: 'Maria Wong',
-      avatar: 'MW',
-      avatarBg: '#1a7070',
-      lastModified: 'Yesterday, 4:30 PM'
-    },
-    {
-      id: 3,
-      name: 'Product Roadmap 2024',
-      details: 'Notion Sync • 12 Pages',
-      icon: 'web',
-      iconBg: '#dce9ff',
-      iconColor: '#3f4948',
-      status: 'Created',
-      type: 'Cloud Integration',
-      createdBy: 'Alex Smith',
-      avatar: 'AS',
-      avatarBg: '#96551a',
-      lastModified: 'Oct 12, 2023'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [filterVisibility, setFilterVisibility] = useState<string>('ALL');
+
+  useEffect(() => {
+    fetchKnowledgeBases().catch(console.error);
+  }, [fetchKnowledgeBases]);
+
+  const handleDeleteKB = async (id: string) => {
+    try {
+      await deleteKB(id);
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error('Failed to delete knowledge base:', err);
     }
-  ];
+  };
+
+  const filteredKBs = knowledgeBases.filter((kb) => {
+    const matchesSearch =
+      kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      kb.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter =
+      filterVisibility === 'ALL' || kb.visibility === filterVisibility;
+    return matchesSearch && matchesFilter;
+  });
+
+  const getVisibilityColor = (visibility: string) => {
+    switch (visibility) {
+      case 'PUBLIC':
+        return { bg: '#e5eeff', text: '#1a7070' };
+      case 'ORGANIZATION':
+        return { bg: '#fff4e5', text: '#cc6600' };
+      case 'PRIVATE':
+        return { bg: '#f0f0f0', text: '#3f4948' };
+      default:
+        return { bg: '#f0f0f0', text: '#3f4948' };
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+
+    if (hours < 24) {
+      if (hours < 1) return 'Just now';
+      return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    } else if (hours < 48) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  const totalFiles = knowledgeBases.reduce((acc, kb) => acc + (kb.total_documents || 0), 0);
+  const totalChunks = knowledgeBases.reduce((acc, kb) => acc + (kb.total_chunks || 0), 0);
 
   return (
     <div
       className="min-h-screen"
       style={{ backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif' }}
     >
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
-
-      {/* Side Navigation */}
-      <aside
-        className={`fixed left-0 top-0 h-full flex flex-col py-6 px-4 z-50 transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-        style={{
-          width: '16rem',
-          backgroundColor: '#f8f9ff',
-          borderRight: '1px solid #bec9c8'
-        }}
-      >
-        {/* Close button for mobile */}
-        <button
-          className="lg:hidden absolute top-4 right-4 p-2"
-          onClick={() => setSidebarOpen(false)}
-          style={{ color: '#3f4948' }}
-        >
-          <span className="material-symbols-outlined">close</span>
-        </button>
-
-        <div className="mb-10 px-2 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: '#005657', color: '#ffffff' }}
-          >
-            <span className="material-symbols-outlined text-2xl">database</span>
-          </div>
-          <div>
-            <h1
-              className="font-bold leading-none"
-              style={{
-                fontFamily: 'Hanken Grotesk, sans-serif',
-                fontSize: '24px',
-                fontWeight: '600',
-                color: '#005657'
-              }}
-            >
-              PersonaFlow
-            </h1>
-            <p
-              className="mt-1"
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '12px',
-                lineHeight: '14px',
-                fontWeight: '500',
-                color: '#3f4948'
-              }}
-            >
-              AI Knowledge Hub
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-1">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#005657';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#3f4948';
-            }}
-          >
-            <span className="material-symbols-outlined">home</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Home
-            </span>
-          </Link>
-
-          <Link
-            href="/dashboard/personas"
-            className="flex items-center gap-3 px-3 py-3 rounded-lg transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#005657';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              const icon = e.currentTarget.querySelector('.material-symbols-outlined') as HTMLElement;
-              if (icon) icon.style.color = '#3f4948';
-            }}
-          >
-            <span className="material-symbols-outlined">smart_toy</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Personas
-            </span>
-          </Link>
-
-          {/* Knowledge Base - Active */}
-          <Link
-            href="/dashboard/knowledge"
-            className="flex items-center gap-3 px-3 py-3 rounded-lg font-bold transition-all duration-200"
-            style={{
-              color: '#005657',
-              borderLeft: '4px solid #005657',
-              backgroundColor: 'rgba(163, 237, 236, 0.3)'
-            }}
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              database
-            </span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Knowledge Base
-            </span>
-          </Link>
-        </nav>
-
-        <div
-          className="mt-auto pt-6 px-2"
-          style={{ borderTop: '1px solid #bec9c8' }}
-        >
-          <Link
-            href="/dashboard/profile"
-            className="flex items-center gap-3 py-3 transition-colors"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#005657'}
-            onMouseLeave={(e) => e.currentTarget.style.color = '#3f4948'}
-          >
-            <span className="material-symbols-outlined">account_circle</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Profile
-            </span>
-          </Link>
-
-          <Link
-            href="/login"
-            className="flex items-center gap-3 py-3 transition-colors"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => e.currentTarget.style.color = '#005657'}
-            onMouseLeave={(e) => e.currentTarget.style.color = '#3f4948'}
-          >
-            <span className="material-symbols-outlined">logout</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Logout
-            </span>
-          </Link>
-        </div>
-      </aside>
-
-      {/* Top App Bar */}
-      <header
-        className="fixed top-0 right-0 w-full lg:w-[calc(100%-16rem)] h-16 flex justify-between lg:justify-end items-center px-4 lg:px-8 z-40"
-        style={{
-          backgroundColor: '#f8f9ff',
-          borderBottom: '1px solid #bec9c8'
-        }}
-      >
-        <button
-          className="lg:hidden p-2"
-          onClick={() => setSidebarOpen(true)}
-          style={{ color: '#005657' }}
-        >
-          <span className="material-symbols-outlined">menu</span>
-        </button>
-
-        <div className="flex items-center gap-2 lg:gap-4">
-          <button
-            className="hidden sm:flex items-center gap-2 px-3 lg:px-4 py-2 rounded-lg transition-all active:scale-95"
-            style={{
-              border: '1px solid #6f7979',
-              color: '#005657',
-              fontFamily: 'Geist, sans-serif',
-              fontSize: '14px',
-              lineHeight: '16px',
-              fontWeight: '500',
-              letterSpacing: '0.02em'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <span>Switch Persona</span>
-            <span className="material-symbols-outlined">expand_more</span>
-          </button>
-
-          <div
-            className="w-8 h-8 rounded-full overflow-hidden"
-            style={{
-              backgroundColor: '#d3e4fe',
-              border: '1px solid #bec9c8'
-            }}
-          >
-            <div
-              className="w-full h-full flex items-center justify-center"
-              style={{
-                color: '#005657',
-                fontWeight: '600',
-                fontSize: '12px'
-              }}
-            >
-              AH
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="pt-16 lg:mt-16 p-4 lg:p-10 min-h-screen lg:ml-64">
+      <main className="p-4 lg:p-10 min-h-screen">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 lg:gap-6 mb-6 lg:mb-8">
           <div>
@@ -348,6 +110,7 @@ export default function KnowledgeBasePage() {
           </div>
 
           <button
+            onClick={() => setShowCreateModal(true)}
             className="flex items-center justify-center gap-2 px-4 lg:px-6 py-3 rounded-lg active:scale-95 transition-all"
             style={{
               backgroundColor: '#005657',
@@ -367,6 +130,29 @@ export default function KnowledgeBasePage() {
             <span className="sm:hidden">Create</span>
           </button>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div
+            className="mb-6 p-4 rounded-lg flex items-center justify-between"
+            style={{
+              backgroundColor: '#fee',
+              border: '1px solid #fcc',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined" style={{ color: '#c00' }}>
+                error
+              </span>
+              <span style={{ color: '#c00', fontFamily: 'Inter, sans-serif' }}>
+                {error}
+              </span>
+            </div>
+            <button onClick={clearError} style={{ color: '#c00' }}>
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        )}
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-6 mb-6 lg:mb-8">
@@ -388,7 +174,7 @@ export default function KnowledgeBasePage() {
                   color: '#005657'
                 }}
               >
-                Active Storage
+                Total Files
               </span>
               <div className="mt-2 flex items-baseline gap-2">
                 <span
@@ -401,7 +187,7 @@ export default function KnowledgeBasePage() {
                     color: '#0b1c30'
                   }}
                 >
-                  12.4
+                  {totalFiles}
                 </span>
                 <span
                   style={{
@@ -412,7 +198,7 @@ export default function KnowledgeBasePage() {
                     color: '#3f4948'
                   }}
                 >
-                  GB
+                  files
                 </span>
               </div>
               <p
@@ -424,11 +210,10 @@ export default function KnowledgeBasePage() {
                   color: '#3f4948'
                 }}
               >
-                78% of your current plan capacity used
+                {totalChunks} chunks processed across all knowledge bases
               </p>
             </div>
 
-            {/* Chart */}
             <div className="w-full sm:w-48 h-24 relative z-10">
               <div className="flex items-end h-full gap-2 justify-center sm:justify-start">
                 <div className="w-4 rounded-t-sm" style={{ backgroundColor: 'rgba(0, 86, 87, 0.2)', height: '40%' }}></div>
@@ -479,7 +264,7 @@ export default function KnowledgeBasePage() {
                 letterSpacing: '-0.02em'
               }}
             >
-              24
+              {knowledgeBases.length}
             </span>
             <div
               className="mt-4 flex items-center gap-2"
@@ -492,385 +277,275 @@ export default function KnowledgeBasePage() {
                 letterSpacing: '0.02em'
               }}
             >
-              <span className="material-symbols-outlined text-sm">trending_up</span>
-              <span>+3 this month</span>
+              <span className="material-symbols-outlined text-sm">database</span>
+              <span>Active knowledge bases</span>
             </div>
           </div>
         </div>
 
-        {/* Table Section */}
+        {/* Filters */}
         <div
-          className="rounded-xl overflow-hidden"
+          className="mb-6 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
           style={{
             backgroundColor: '#ffffff',
-            border: '1px solid #bec9c8',
-            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)'
+            border: '1px solid #bec9c8'
           }}
         >
-          {/* Table Header with Search */}
-          <div
-            className="px-4 lg:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-            style={{ borderBottom: '1px solid #bec9c8' }}
-          >
-            <div className="relative flex-1 w-full max-w-md">
-              <span
-                className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: '#3f4948' }}
-              >
-                search
-              </span>
-              <input
-                className="w-full pl-10 pr-4 py-2 rounded-lg outline-none transition-all"
-                style={{
-                  backgroundColor: '#eff4ff',
-                  border: '1px solid #6f7979',
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: '14px',
-                  lineHeight: '20px',
-                  color: '#0b1c30'
-                }}
-                placeholder="Search knowledge bases..."
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#005657';
-                  e.target.style.boxShadow = '0 0 0 1px #005657';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#6f7979';
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                className="p-2 rounded-lg transition-colors"
-                style={{ color: '#3f4948' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span className="material-symbols-outlined">filter_list</span>
-              </button>
-              <button
-                className="p-2 rounded-lg transition-colors"
-                style={{ color: '#3f4948' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span className="material-symbols-outlined">more_vert</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Table - Desktop */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: '#eff4ff',
-                    borderBottom: '1px solid #bec9c8'
-                  }}
-                >
-                  <th
-                    className="px-6 py-4 uppercase tracking-wider"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '500',
-                      letterSpacing: '0.02em',
-                      color: '#3f4948'
-                    }}
-                  >
-                    Name
-                  </th>
-                  <th
-                    className="px-6 py-4 uppercase tracking-wider"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '500',
-                      letterSpacing: '0.02em',
-                      color: '#3f4948'
-                    }}
-                  >
-                    Status
-                  </th>
-                  <th
-                    className="px-6 py-4 uppercase tracking-wider"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '500',
-                      letterSpacing: '0.02em',
-                      color: '#3f4948'
-                    }}
-                  >
-                    Type
-                  </th>
-                  <th
-                    className="px-6 py-4 uppercase tracking-wider"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '500',
-                      letterSpacing: '0.02em',
-                      color: '#3f4948'
-                    }}
-                  >
-                    Created By
-                  </th>
-                  <th
-                    className="px-6 py-4 uppercase tracking-wider"
-                    style={{
-                      fontFamily: 'Geist, sans-serif',
-                      fontSize: '14px',
-                      lineHeight: '16px',
-                      fontWeight: '500',
-                      letterSpacing: '0.02em',
-                      color: '#3f4948'
-                    }}
-                  >
-                    Last Modified
-                  </th>
-                  <th className="px-6 py-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {knowledgeBases.map((kb) => (
-                  <tr
-                    key={kb.id}
-                    className="group transition-colors"
-                    style={{ borderBottom: '1px solid #bec9c8' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff4ff'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <td className="px-6 py-5">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center"
-                          style={{
-                            backgroundColor: kb.iconBg,
-                            color: kb.iconColor
-                          }}
-                        >
-                          <span className="material-symbols-outlined">{kb.icon}</span>
-                        </div>
-                        <div>
-                          <div
-                            className="font-semibold"
-                            style={{
-                              fontFamily: 'Geist, sans-serif',
-                              fontSize: '14px',
-                              lineHeight: '16px',
-                              fontWeight: '600',
-                              letterSpacing: '0.02em',
-                              color: '#0b1c30'
-                            }}
-                          >
-                            {kb.name}
-                          </div>
-                          <div
-                            style={{
-                              fontFamily: 'Inter, sans-serif',
-                              fontSize: '14px',
-                              lineHeight: '20px',
-                              color: '#3f4948'
-                            }}
-                          >
-                            {kb.details}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span
-                        className="inline-flex items-center px-3 py-1 rounded-full"
-                        style={{
-                          backgroundColor: '#a3edec',
-                          color: '#005657',
-                          fontFamily: 'Geist, sans-serif',
-                          fontSize: '12px',
-                          lineHeight: '14px',
-                          fontWeight: '500'
-                        }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full mr-2"
-                          style={{ backgroundColor: '#005657' }}
-                        ></span>
-                        {kb.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span
-                        style={{
-                          fontFamily: 'Inter, sans-serif',
-                          fontSize: '14px',
-                          lineHeight: '20px',
-                          color: '#0b1c30'
-                        }}
-                      >
-                        {kb.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{
-                            backgroundColor: kb.avatarBg,
-                            color: '#ffffff'
-                          }}
-                        >
-                          {kb.avatar}
-                        </div>
-                        <span
-                          style={{
-                            fontFamily: 'Inter, sans-serif',
-                            fontSize: '14px',
-                            lineHeight: '20px',
-                            color: '#0b1c30'
-                          }}
-                        >
-                          {kb.createdBy}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span
-                        style={{
-                          fontFamily: 'Inter, sans-serif',
-                          fontSize: '14px',
-                          lineHeight: '20px',
-                          color: '#3f4948'
-                        }}
-                      >
-                        {kb.lastModified}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5 text-right">
-                      <button
-                        className="opacity-0 group-hover:opacity-100 p-2 transition-all"
-                        style={{ color: '#3f4948' }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#005657'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#3f4948'}
-                      >
-                        <span className="material-symbols-outlined">settings</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="lg:hidden divide-y" style={{ borderColor: '#bec9c8' }}>
-            {knowledgeBases.map((kb) => (
-              <div key={kb.id} className="p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{
-                      backgroundColor: kb.iconBg,
-                      color: kb.iconColor
-                    }}
-                  >
-                    <span className="material-symbols-outlined">{kb.icon}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div
-                      className="font-semibold truncate"
-                      style={{
-                        fontFamily: 'Geist, sans-serif',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: '#0b1c30'
-                      }}
-                    >
-                      {kb.name}
-                    </div>
-                    <div
-                      className="text-sm"
-                      style={{
-                        fontFamily: 'Inter, sans-serif',
-                        color: '#3f4948'
-                      }}
-                    >
-                      {kb.details}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2 text-sm">
-                  <span
-                    className="inline-flex items-center px-2 py-1 rounded-full"
-                    style={{
-                      backgroundColor: '#a3edec',
-                      color: '#005657',
-                      fontSize: '12px'
-                    }}
-                  >
-                    {kb.status}
-                  </span>
-                  <span style={{ color: '#3f4948' }}>{kb.type}</span>
-                  <span style={{ color: '#3f4948' }}>• {kb.lastModified}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          <div
-            className="px-4 lg:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3"
-            style={{
-              backgroundColor: '#eff4ff',
-              borderTop: '1px solid #bec9c8'
-            }}
-          >
+          <div className="relative flex-1 w-full max-w-md">
             <span
+              className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: '#3f4948' }}
+            >
+              search
+            </span>
+            <input
+              className="w-full pl-10 pr-4 py-2 rounded-lg outline-none transition-all"
               style={{
+                backgroundColor: '#eff4ff',
+                border: '1px solid #6f7979',
                 fontFamily: 'Inter, sans-serif',
                 fontSize: '14px',
                 lineHeight: '20px',
-                color: '#3f4948'
+                color: '#0b1c30'
               }}
-            >
-              Showing 1 to 3 of 24 results
-            </span>
-            <div className="flex items-center gap-2">
+              placeholder="Search knowledge bases..."
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#005657';
+                e.target.style.boxShadow = '0 0 0 1px #005657';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#6f7979';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            {['ALL', 'PRIVATE', 'ORGANIZATION', 'PUBLIC'].map((filter) => (
               <button
-                className="p-2 rounded-lg transition-colors disabled:opacity-50"
+                key={filter}
+                onClick={() => setFilterVisibility(filter)}
+                className="px-4 py-2 rounded-lg transition-all text-sm"
                 style={{
-                  border: '1px solid #6f7979',
-                  color: '#3f4948'
+                  backgroundColor:
+                    filterVisibility === filter ? '#005657' : 'transparent',
+                  color: filterVisibility === filter ? '#ffffff' : '#3f4948',
+                  border: `1px solid ${filterVisibility === filter ? '#005657' : '#6f7979'}`,
+                  fontFamily: 'Geist, sans-serif',
+                  fontWeight: '500',
                 }}
-                disabled
-                onMouseEnter={(e) => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#dce9ff')}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                <span className="material-symbols-outlined">chevron_left</span>
+                {filter}
               </button>
-              <button
-                className="p-2 rounded-lg transition-colors"
-                style={{
-                  border: '1px solid #6f7979',
-                  color: '#3f4948'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dce9ff'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span className="material-symbols-outlined">chevron_right</span>
-              </button>
-            </div>
+            ))}
           </div>
         </div>
+
+        {/* Knowledge Bases Grid */}
+        {isLoading && knowledgeBases.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="rounded-xl p-6 animate-pulse"
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #bec9c8',
+                }}
+              >
+                <div
+                  className="h-12 w-12 rounded-lg mb-4"
+                  style={{ backgroundColor: '#e5eeff' }}
+                ></div>
+                <div
+                  className="h-6 rounded mb-3"
+                  style={{ backgroundColor: '#e5eeff', width: '70%' }}
+                ></div>
+                <div
+                  className="h-4 rounded mb-2"
+                  style={{ backgroundColor: '#e5eeff' }}
+                ></div>
+                <div
+                  className="h-4 rounded"
+                  style={{ backgroundColor: '#e5eeff', width: '60%' }}
+                ></div>
+              </div>
+            ))}
+          </div>
+        ) : filteredKBs.length === 0 ? (
+          <div
+            className="text-center py-16 rounded-xl"
+            style={{
+              backgroundColor: '#ffffff',
+              border: '1px solid #bec9c8',
+            }}
+          >
+            <div
+              className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#e5eeff' }}
+            >
+              <span
+                className="material-symbols-outlined text-4xl"
+                style={{ color: '#1a7070' }}
+              >
+                database
+              </span>
+            </div>
+            <h3
+              style={{
+                fontFamily: 'Hanken Grotesk, sans-serif',
+                fontSize: '20px',
+                fontWeight: '600',
+                color: '#0b1c30',
+                marginBottom: '8px',
+              }}
+            >
+              No knowledge bases found
+            </h3>
+            <p
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+                color: '#3f4948',
+              }}
+            >
+              {searchQuery || filterVisibility !== 'ALL'
+                ? 'Try adjusting your search or filters'
+                : 'Create your first knowledge base to get started'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredKBs.map((kb) => {
+              const visColors = getVisibilityColor(kb.visibility);
+              return (
+                <div
+                  key={kb.id}
+                  className="rounded-xl p-6 transition-all cursor-pointer group hover:shadow-lg"
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #bec9c8',
+                  }}
+                  onClick={() => router.push(`/dashboard/knowledge/${kb.id}`)}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.borderColor = '#005657')
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.borderColor = '#bec9c8')
+                  }
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div
+                      className="w-12 h-12 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: '#a3edec' }}
+                    >
+                      <span
+                        className="material-symbols-outlined text-2xl"
+                        style={{ color: '#005657' }}
+                      >
+                        folder
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: visColors.bg,
+                          color: visColors.text,
+                        }}
+                      >
+                        {kb.visibility}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteConfirm(kb.id);
+                        }}
+                        className="p-1 rounded hover:bg-red-100 transition-colors"
+                        style={{ color: '#c00' }}
+                      >
+                        <span className="material-symbols-outlined text-lg">
+                          delete
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <h3
+                    className="mb-2"
+                    style={{
+                      fontFamily: 'Hanken Grotesk, sans-serif',
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#0b1c30',
+                    }}
+                  >
+                    {kb.name}
+                  </h3>
+
+                  <p
+                    className="mb-4 line-clamp-2"
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: '14px',
+                      lineHeight: '20px',
+                      color: '#3f4948',
+                    }}
+                  >
+                    {kb.description || 'No description provided'}
+                  </p>
+
+                  {kb.category && (
+                    <p
+                      className="mb-3 text-sm"
+                      style={{
+                        fontFamily: 'Geist, sans-serif',
+                        color: '#1a7070',
+                        fontWeight: '500',
+                      }}
+                    >
+                      {kb.category}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-4 text-sm">
+                    <div
+                      className="flex items-center gap-1"
+                      style={{ color: '#3f4948' }}
+                    >
+                      <span className="material-symbols-outlined text-base">
+                        description
+                      </span>
+                      <span>{kb.total_documents || 0} files</span>
+                    </div>
+                    <div
+                      className="flex items-center gap-1"
+                      style={{ color: '#3f4948' }}
+                    >
+                      <span className="material-symbols-outlined text-base">
+                        data_object
+                      </span>
+                      <span>{kb.total_chunks || 0} chunks</span>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mt-3 pt-3 text-xs"
+                    style={{
+                      borderTop: '1px solid #e5eeff',
+                      color: '#3f4948',
+                    }}
+                  >
+                    {formatDate(kb.created_at)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Featured Resources */}
         <div className="mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
@@ -975,9 +650,10 @@ export default function KnowledgeBasePage() {
                 color: '#3f4948'
               }}
             >
-              Drag and drop any file here to start a new knowledge base instantly.
+              Upload files to enhance your knowledge base instantly.
             </p>
             <button
+              onClick={() => setShowCreateModal(true)}
               className="mt-6 px-4 py-2 rounded-lg transition-all w-full"
               style={{
                 border: '2px dashed rgba(0, 86, 87, 0.4)',
@@ -991,11 +667,341 @@ export default function KnowledgeBasePage() {
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 86, 87, 0.05)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              Select File
+              Create Knowledge Base
             </button>
           </div>
         </div>
       </main>
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <CreateKBModal
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            fetchKnowledgeBases();
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div
+            className="rounded-xl p-6 max-w-md w-full"
+            style={{
+              backgroundColor: '#ffffff',
+              border: '1px solid #bec9c8',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: '#fee' }}
+              >
+                <span className="material-symbols-outlined text-2xl" style={{ color: '#c00' }}>
+                  warning
+                </span>
+              </div>
+              <h3
+                style={{
+                  fontFamily: 'Hanken Grotesk, sans-serif',
+                  fontSize: '20px',
+                  fontWeight: '600',
+                  color: '#0b1c30',
+                }}
+              >
+                Delete Knowledge Base?
+              </h3>
+            </div>
+            <p
+              className="mb-6"
+              style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+                color: '#3f4948',
+              }}
+            >
+              This will permanently delete the knowledge base and all its files. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-lg transition-colors"
+                style={{
+                  backgroundColor: '#e5eeff',
+                  color: '#3f4948',
+                  fontFamily: 'Geist, sans-serif',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteKB(deleteConfirm)}
+                className="px-4 py-2 rounded-lg transition-colors"
+                style={{
+                  backgroundColor: '#c00',
+                  color: '#ffffff',
+                  fontFamily: 'Geist, sans-serif',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#a00')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#c00')}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateKBModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { createKB, isLoading } = useKnowledgeBaseStore();
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    category: '',
+    tags: '',
+    visibility: 'PRIVATE' as 'PRIVATE' | 'ORGANIZATION' | 'PUBLIC',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createKB({
+        name: formData.name,
+        description: formData.description || undefined,
+        category: formData.category || undefined,
+        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : undefined,
+        visibility: formData.visibility,
+      });
+      onSuccess();
+    } catch (err) {
+      console.error('Failed to create knowledge base:', err);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        style={{
+          backgroundColor: '#ffffff',
+          border: '1px solid #bec9c8',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h3
+            style={{
+              fontFamily: 'Hanken Grotesk, sans-serif',
+              fontSize: '24px',
+              fontWeight: '600',
+              color: '#005657',
+            }}
+          >
+            Create Knowledge Base
+          </h3>
+          <button onClick={onClose} style={{ color: '#3f4948' }}>
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              className="block mb-2"
+              style={{
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#0b1c30',
+              }}
+            >
+              Name *
+            </label>
+            <input
+              type="text"
+              required
+              minLength={3}
+              maxLength={255}
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-3 rounded-lg border outline-none focus:border-[#005657]"
+              style={{
+                backgroundColor: '#f8f9ff',
+                border: '1px solid #bec9c8',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+              }}
+              placeholder="Enter knowledge base name"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block mb-2"
+              style={{
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#0b1c30',
+              }}
+            >
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              maxLength={2000}
+              className="w-full px-4 py-3 rounded-lg border outline-none focus:border-[#005657] resize-none"
+              style={{
+                backgroundColor: '#f8f9ff',
+                border: '1px solid #bec9c8',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+              }}
+              placeholder="Describe this knowledge base"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block mb-2"
+              style={{
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#0b1c30',
+              }}
+            >
+              Category
+            </label>
+            <input
+              type="text"
+              maxLength={100}
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-4 py-3 rounded-lg border outline-none focus:border-[#005657]"
+              style={{
+                backgroundColor: '#f8f9ff',
+                border: '1px solid #bec9c8',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+              }}
+              placeholder="e.g., Research, Documentation, Marketing"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block mb-2"
+              style={{
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#0b1c30',
+              }}
+            >
+              Tags
+            </label>
+            <input
+              type="text"
+              value={formData.tags}
+              onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+              className="w-full px-4 py-3 rounded-lg border outline-none focus:border-[#005657]"
+              style={{
+                backgroundColor: '#f8f9ff',
+                border: '1px solid #bec9c8',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px',
+              }}
+              placeholder="Comma-separated tags (e.g., tech, finance, Q1)"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block mb-2"
+              style={{
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#0b1c30',
+              }}
+            >
+              Visibility *
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['PRIVATE', 'ORGANIZATION', 'PUBLIC'] as const).map((vis) => (
+                <button
+                  key={vis}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, visibility: vis })}
+                  className="px-4 py-3 rounded-lg border transition-all"
+                  style={{
+                    backgroundColor: formData.visibility === vis ? '#005657' : '#f8f9ff',
+                    color: formData.visibility === vis ? '#ffffff' : '#3f4948',
+                    border: `1px solid ${formData.visibility === vis ? '#005657' : '#bec9c8'}`,
+                    fontFamily: 'Geist, sans-serif',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  }}
+                >
+                  {vis}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-3 rounded-lg transition-colors"
+              style={{
+                backgroundColor: '#e5eeff',
+                color: '#3f4948',
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || !formData.name}
+              className="flex-1 px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
+              style={{
+                backgroundColor: '#005657',
+                color: '#ffffff',
+                fontFamily: 'Geist, sans-serif',
+                fontSize: '14px',
+                fontWeight: '500',
+              }}
+              onMouseEnter={(e) => !isLoading && (e.currentTarget.style.backgroundColor = '#1a7070')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#005657')}
+            >
+              {isLoading ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

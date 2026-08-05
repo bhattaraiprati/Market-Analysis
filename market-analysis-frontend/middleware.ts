@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get('access_token')?.value ||
-                request.headers.get('authorization')?.replace('Bearer ', '');
+  const token = request.cookies.get('access_token')?.value;
 
   const { pathname } = request.nextUrl;
+
+  console.log('Middleware - Path:', pathname, 'Token exists:', !!token);
 
   // Public routes that don't require authentication
   const publicRoutes = ['/', '/login', '/register'];
@@ -21,6 +22,7 @@ export function middleware(request: NextRequest) {
 
   // If user has no token and trying to access protected route
   if (!token && isProtectedRoute) {
+    console.log('Middleware - Redirecting to login (no token)');
     const url = new URL('/login', request.url);
     url.searchParams.set('redirect', pathname);
     return NextResponse.redirect(url);
@@ -28,6 +30,7 @@ export function middleware(request: NextRequest) {
 
   // If user has token and trying to access auth routes, redirect to dashboard
   if (token && isAuthRoute) {
+    console.log('Middleware - Redirecting to dashboard (has token, on auth page)');
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 

@@ -1,35 +1,57 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/authStore';
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { register, isLoading, error, clearError } = useAuthStore();
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [terms, setTerms] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError('');
 
+    // Client-side validation
     if (password !== confirmPassword) {
-      alert('Passwords do not match!');
+      setValidationError('Passwords do not match!');
       return;
     }
 
     if (!terms) {
-      alert('Please agree to the Terms of Service and Privacy Policy');
+      setValidationError('Please agree to the Terms of Service and Privacy Policy');
       return;
     }
 
-    console.log('Register:', { fullName, email, password });
-    setShowSuccess(true);
+    if (password.length < 8) {
+      setValidationError('Password must be at least 8 characters long');
+      return;
+    }
 
-    setTimeout(() => {
-      console.log('Redirecting to dashboard...');
-    }, 2500);
+    try {
+      await register({ name: fullName, email, password });
+      setShowSuccess(true);
+
+      setTimeout(() => {
+        router.push('/login');
+      }, 2500);
+    } catch (err) {
+      // Error is handled by the store
+      console.error('Registration failed:', err);
+    }
   };
 
   return (
@@ -143,6 +165,34 @@ export default function RegisterPage() {
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit}>
+              {/* Error Messages */}
+              {(error || validationError) && (
+                <div
+                  className="p-4 rounded-lg flex items-start gap-3"
+                  style={{
+                    backgroundColor: '#ffdad6',
+                    border: '1px solid #ba1a1a',
+                  }}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ color: '#ba1a1a', fontSize: '20px' }}
+                  >
+                    error
+                  </span>
+                  <p
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: '14px',
+                      lineHeight: '20px',
+                      color: '#93000a',
+                    }}
+                  >
+                    {error || validationError}
+                  </p>
+                </div>
+              )}
+
               {/* Name Field */}
               <div className="space-y-2">
                 <label
@@ -411,20 +461,35 @@ export default function RegisterPage() {
               <button
                 className="w-full py-4 px-6 rounded-lg flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] shadow-sm"
                 type="submit"
+                disabled={isLoading}
                 style={{
-                  backgroundColor: '#1a7070',
+                  backgroundColor: isLoading ? '#6f7979' : '#1a7070',
                   color: '#ffffff',
                   fontFamily: 'Geist, sans-serif',
                   fontSize: '14px',
                   lineHeight: '16px',
                   fontWeight: '500',
-                  letterSpacing: '0.02em'
+                  letterSpacing: '0.02em',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseEnter={(e) => {
+                  if (!isLoading) e.currentTarget.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoading) e.currentTarget.style.opacity = '1';
+                }}
               >
-                Register
-                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                {isLoading ? (
+                  <>
+                    <span className="animate-spin">⟳</span>
+                    Creating account...
+                  </>
+                ) : (
+                  <>
+                    Register
+                    <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </>
+                )}
               </button>
             </form>
 

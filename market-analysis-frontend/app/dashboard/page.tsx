@@ -1,13 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/authStore';
+import { usePersonaStore } from '@/lib/stores/personaStore';
 
 export default function DashboardPage() {
+  const { user, organization } = useAuthStore();
+  const { personas, fetchPersonas } = usePersonaStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    // Fetch personas on load
+    fetchPersonas().catch(console.error);
+
     // Simple animation on load for cards
     const cards = document.querySelectorAll('.glass-card');
     cards.forEach((card, index) => {
@@ -19,7 +24,14 @@ export default function DashboardPage() {
         (card as HTMLElement).style.transform = 'translateY(0)';
       }, 100 * index);
     });
-  }, []);
+  }, [fetchPersonas]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const quickActions = [
     { icon: 'architecture', title: 'Project Scoping', description: 'Outline key objectives' },
@@ -33,278 +45,7 @@ export default function DashboardPage() {
       className="min-h-screen"
       style={{ backgroundColor: '#f8f9ff', fontFamily: 'Inter, sans-serif' }}
     >
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          style={{ transition: 'opacity 0.3s' }}
-        ></div>
-      )}
-
-      {/* Side Navigation */}
-      <aside
-        className={`fixed left-0 top-0 h-full flex flex-col py-6 px-4 z-50 transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-        style={{
-          width: '16rem',
-          backgroundColor: '#f8f9ff',
-          borderRight: '1px solid #bec9c8'
-        }}
-      >
-        {/* Close button for mobile */}
-        <button
-          className="lg:hidden absolute top-4 right-4 p-2"
-          onClick={() => setSidebarOpen(false)}
-          style={{ color: '#3f4948' }}
-        >
-          <span className="material-symbols-outlined">close</span>
-        </button>
-
-        <div className="mb-10 px-2 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: '#005657', color: '#ffffff' }}
-          >
-            <span className="material-symbols-outlined">hub</span>
-          </div>
-          <div>
-            <h1
-              className="font-bold"
-              style={{
-                fontFamily: 'Hanken Grotesk, sans-serif',
-                fontSize: '24px',
-                lineHeight: '32px',
-                fontWeight: '600',
-                color: '#005657'
-              }}
-            >
-              PersonaFlow
-            </h1>
-            <p
-              className="opacity-70"
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '12px',
-                lineHeight: '14px',
-                fontWeight: '500',
-                color: '#3f4948'
-              }}
-            >
-              AI Knowledge Hub
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-1">
-          {/* Home Tab: Active */}
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 px-3 py-3 font-bold transition-all duration-200"
-            style={{
-              color: '#005657',
-              borderLeft: '4px solid #005657',
-              backgroundColor: 'rgba(163, 237, 236, 0.3)'
-            }}
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="material-symbols-outlined">home</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Home
-            </span>
-          </Link>
-
-          {/* Personas Tab */}
-          <Link
-            href="/dashboard/personas"
-            className="flex items-center gap-3 px-3 py-3 transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#005657';
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#3f4948';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span className="material-symbols-outlined">smart_toy</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Personas
-            </span>
-          </Link>
-
-          {/* Knowledge Base Tab */}
-          <Link
-            href="/dashboard/knowledge"
-            className="flex items-center gap-3 px-3 py-3 transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#005657';
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#3f4948';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span className="material-symbols-outlined">database</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Knowledge Base
-            </span>
-          </Link>
-        </nav>
-
-        <div
-          className="mt-auto space-y-1 pt-6"
-          style={{ borderTop: '1px solid #bec9c8' }}
-        >
-          <Link
-            href="/dashboard/profile"
-            className="flex items-center gap-3 px-3 py-3 transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#005657';
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#3f4948';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span className="material-symbols-outlined">account_circle</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Profile
-            </span>
-          </Link>
-
-          <Link
-            href="/login"
-            className="flex items-center gap-3 px-3 py-3 transition-colors group"
-            style={{ color: '#3f4948' }}
-            onClick={() => setSidebarOpen(false)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#005657';
-              e.currentTarget.style.backgroundColor = '#dce9ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#3f4948';
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span className="material-symbols-outlined">logout</span>
-            <span
-              style={{
-                fontFamily: 'Geist, sans-serif',
-                fontSize: '14px',
-                lineHeight: '16px',
-                fontWeight: '500',
-                letterSpacing: '0.02em'
-              }}
-            >
-              Logout
-            </span>
-          </Link>
-        </div>
-      </aside>
-
-      {/* Top App Bar */}
-      <header
-        className="fixed top-0 right-0 w-full lg:w-[calc(100%-16rem)] h-16 flex justify-between lg:justify-end items-center px-4 lg:px-8 z-40"
-        style={{
-          backgroundColor: '#f8f9ff',
-          borderBottom: '1px solid #bec9c8'
-        }}
-      >
-        {/* Hamburger Menu for Mobile */}
-        <button
-          className="lg:hidden p-2"
-          onClick={() => setSidebarOpen(true)}
-          style={{ color: '#005657' }}
-        >
-          <span className="material-symbols-outlined">menu</span>
-        </button>
-
-        <div className="flex items-center gap-3 lg:gap-6">
-          <button
-            className="flex items-center gap-2 px-3 lg:px-4 py-2 rounded-full active:scale-95 transition-all"
-            style={{
-              backgroundColor: '#1a7070',
-              color: '#a4f1f0',
-              fontFamily: 'Geist, sans-serif',
-              fontSize: '14px',
-              lineHeight: '16px',
-              fontWeight: '500',
-              letterSpacing: '0.02em'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-          >
-            <span className="hidden sm:inline">Switch Persona</span>
-            <span className="sm:hidden">Persona</span>
-            <span className="material-symbols-outlined">expand_more</span>
-          </button>
-
-          <div
-            className="w-10 h-10 rounded-full overflow-hidden"
-            style={{
-              backgroundColor: '#e5eeff',
-              border: '1px solid #bec9c8'
-            }}
-          >
-            <div
-              className="w-full h-full flex items-center justify-center"
-              style={{
-                backgroundColor: '#dce9ff',
-                color: '#005657',
-                fontWeight: '600',
-                fontSize: '14px'
-              }}
-            >
-              AH
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Canvas */}
-      <main className="pt-16 min-h-screen relative flex flex-col lg:ml-64">
+      <main className="min-h-screen relative flex flex-col">
         <section className="flex-1 flex flex-col items-center justify-center px-4 md:px-6 lg:px-10 py-6 lg:py-8">
           {/* Hero Greeting */}
           <div className="text-center mb-8 lg:mb-12 max-w-2xl">
@@ -319,7 +60,7 @@ export default function DashboardPage() {
                 color: '#005657'
               }}
             >
-              Good afternoon, Alex!
+              {getGreeting()}, {user?.name?.split(' ')[0] || 'there'}!
             </h2>
             <p
               style={{
@@ -329,7 +70,7 @@ export default function DashboardPage() {
                 color: '#3f4948'
               }}
             >
-              Your business analyst persona is active. What can I help you synthesize today?
+              {organization?.name || 'Your organization'} • {personas.length} persona{personas.length !== 1 ? 's' : ''} active
             </p>
           </div>
 
@@ -386,7 +127,7 @@ export default function DashboardPage() {
                     color: '#3f4948'
                   }}
                 >
-                  I've parsed the latest Q3 reports. You have 3 strategic opportunities waiting for
+                  I&apos;ve parsed the latest Q3 reports. You have 3 strategic opportunities waiting for
                   your review.
                 </p>
               </div>
