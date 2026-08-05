@@ -15,6 +15,8 @@ import {
 import { Organization } from './organization.model';
 import { OrganizationMember } from './organizationMember.model';
 import { UserRole, UserStatus } from '../common/enums';
+import { Conversation } from './conversation.model';
+import { Message } from './message.model';
 
 @Table({
   tableName: 'users',
@@ -78,4 +80,10 @@ export class User extends Model {
 
   @BelongsToMany(() => Organization, () => OrganizationMember)
   declare organizations: Organization[];
+
+  @HasMany(() => Conversation)
+  declare conversations: Conversation[];
+
+  @HasMany(() => Message)
+  declare messages: Message[];
 }

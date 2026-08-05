@@ -10,6 +10,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { PersonaModule } from './persona/persona.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { getDatabaseConfig } from './config/database.config';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { getDatabaseConfig } from './config/database.config';
       useFactory: getDatabaseConfig,
     }),
     // Feature modules
+    LlmModule,
     AuthModule,
     CompanyContextModule,
     ResearchModule,

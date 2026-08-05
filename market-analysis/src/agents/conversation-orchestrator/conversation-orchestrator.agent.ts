@@ -7,9 +7,10 @@
 import { Injectable } from '@nestjs/common';
 import { BaseAgent } from '../base/base.agent';
 import { AgentContext, AgentResult } from '../base/agent.types';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { QueryRouterAgent, QueryIntent } from '../query-router/query-router.agent';
 import { WriterAgent } from '../writer/writer.agent';
+import { LlmService } from '../../llm/llm.service';
+import { LlmGenerateResult } from '../../llm/llm.types';
 
 export interface ConversationResult {
   response: string;
@@ -35,26 +36,12 @@ export interface ConversationResult {
 
 @Injectable()
 export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult> {
-  private readonly bedrock: BedrockRuntimeClient;
-  private readonly modelId = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-
   constructor(
     private readonly queryRouterAgent: QueryRouterAgent,
     private readonly writerAgent: WriterAgent,
+    private readonly llmService: LlmService,
   ) {
     super('ConversationOrchestratorAgent');
-
-    if (!process.env.CLAUDE_ACCESS_KEY_ID || !process.env.CLAUDE_SECRET_ACCESS_KEY) {
-      throw new Error('AWS credentials not found');
-    }
-
-    this.bedrock = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
-        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
-      },
-    });
   }
 
   async execute(context: AgentContext): Promise<AgentResult<ConversationResult>> {
@@ -85,6 +72,7 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
         },
       });
 
+      
       if (!routerResult.success || !routerResult.data) {
         throw new Error('Query router failed');
       }
@@ -166,11 +154,11 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
 
       return this.createSuccessResult<ConversationResult>(
         {
-          response,
+          response: response.content,
           intent,
           sourcesUsed,
           processingTimeMs,
-          modelUsed: this.modelId,
+          modelUsed: response.model,
         },
         {
           queryType: intent.queryType,
@@ -190,7 +178,7 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
     webSearchContext: string,
     knowledgeBaseContext: string,
     intent: QueryIntent,
-  ): Promise<string> {
+  ): Promise<LlmGenerateResult> {
     const systemPrompt = this.buildSystemPrompt(personaConfig, intent);
     const userPrompt = this.buildUserPrompt(
       userQuery,
@@ -199,8 +187,7 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
       knowledgeBaseContext,
     );
 
-    const response = await this.callClaude(systemPrompt, userPrompt, 4000, 0.7);
-    return response;
+    return this.callLlm(systemPrompt, userPrompt, 4000, 0.7);
   }
 
   private buildSystemPrompt(personaConfig: any, intent: QueryIntent): string {
@@ -303,40 +290,18 @@ RESPONSE GUIDELINES:
     return `Retrieved ${results.length} web results`;
   }
 
-  private async callClaude(
+  private async callLlm(
     systemPrompt: string,
     userPrompt: string,
     maxTokens = 4000,
     temperature = 0.7,
-  ): Promise<string> {
-    const payload = {
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: maxTokens,
+  ): Promise<LlmGenerateResult> {
+    return this.llmService.generateText({
+      task: 'conversation',
+      systemPrompt,
+      userPrompt,
+      maxTokens,
       temperature,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: userPrompt }],
-        },
-      ],
-    };
-
-    const command = new InvokeModelCommand({
-      modelId: this.modelId,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(payload),
     });
-
-    const response = await this.bedrock.send(command);
-    const decoded = new TextDecoder().decode(response.body);
-    const parsed = JSON.parse(decoded);
-
-    const text = parsed.content?.[0]?.text;
-    if (!text) {
-      throw new Error('Empty response from Claude');
-    }
-    return text;
   }
 }

@@ -7,7 +7,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseAgent } from '../base/base.agent';
 import { AgentContext, AgentResult } from '../base/agent.types';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { LlmService } from '../../llm/llm.service';
 
 export interface QueryIntent {
   requiresWebSearch: boolean;
@@ -22,23 +22,8 @@ export interface QueryIntent {
 
 @Injectable()
 export class QueryRouterAgent extends BaseAgent<QueryIntent> {
-  private readonly bedrock: BedrockRuntimeClient;
-  private readonly modelId = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-
-  constructor() {
+  constructor(private readonly llmService: LlmService) {
     super('QueryRouterAgent');
-
-    if (!process.env.CLAUDE_ACCESS_KEY_ID || !process.env.CLAUDE_SECRET_ACCESS_KEY) {
-      throw new Error('AWS credentials not found');
-    }
-
-    this.bedrock = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
-        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
-      },
-    });
   }
 
   async execute(context: AgentContext): Promise<AgentResult<QueryIntent>> {
@@ -57,8 +42,7 @@ export class QueryRouterAgent extends BaseAgent<QueryIntent> {
       const systemPrompt = this.buildSystemPrompt(personaConfig);
       const userPrompt = this.buildUserPrompt(userQuery, conversationHistory);
 
-      // Call Claude for intent analysis
-      const analysisResponse = await this.callClaude(systemPrompt, userPrompt);
+      const analysisResponse = await this.callLlm(systemPrompt, userPrompt);
 
       // Parse response
       const intent = this.parseIntentResponse(analysisResponse);
@@ -151,36 +135,19 @@ Now analyze the user's query above.`;
     return prompt;
   }
 
-  private async callClaude(systemPrompt: string, userPrompt: string): Promise<string> {
-    const payload = {
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: 1000,
+  private async callLlm(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<string> {
+    const result = await this.llmService.generateText({
+      task: 'routing',
+      systemPrompt,
+      userPrompt,
+      maxTokens: 1000,
       temperature: 0.3,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: userPrompt }],
-        },
-      ],
-    };
-
-    const command = new InvokeModelCommand({
-      modelId: this.modelId,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(payload),
     });
 
-    const response = await this.bedrock.send(command);
-    const decoded = new TextDecoder().decode(response.body);
-    const parsed = JSON.parse(decoded);
-
-    const text = parsed.content?.[0]?.text;
-    if (!text) {
-      throw new Error('Empty response from Claude');
-    }
-    return text;
+    return result.content;
   }
 
   private parseIntentResponse(response: string): QueryIntent {

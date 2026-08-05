@@ -44,7 +44,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      ANALYST AGENT                                   │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ Uses: Claude Sonnet 4.5 via Amazon Bedrock                    │  │
+│  │ Uses: Central LLM service (Groq)                              │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                       │
 │  Processing Steps:                                                   │
@@ -78,7 +78,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      WRITER AGENT (NEW)                              │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │ Uses: Claude Sonnet 4.5 via Amazon Bedrock                    │  │
+│  │ Uses: Central LLM service (Groq)                              │  │
 │  │ Model: us.anthropic.claude-sonnet-4-5-20250929-v1:0           │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                       │
@@ -428,18 +428,19 @@
 *All findings should be validated through additional research and human judgment.*
 ```
 
-## Bedrock API Call Pattern
+## Shared LLM Call Pattern
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   callClaude(system, user, tokens, temp)             │
+│                 llmService.generateText(options)                     │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
-                        Build Request Payload
+                        Call shared LlmService
                         {
-                          anthropic_version: 'bedrock-2023-05-31',
-                          max_tokens: 1500,
+                          systemPrompt,
+                          userPrompt,
+                          maxTokens: 1500,
                           temperature: 0.6,
                           system: 'You are a professional writer...',
                           messages: [{
@@ -449,21 +450,21 @@
                         }
                                   │
                                   ▼
-                        Create InvokeModelCommand
+                        LlmService builds provider request
                         {
-                          modelId: 'us.anthropic.claude-sonnet-4-5-...',
+                          model: process.env.GROQ_MODEL,
                           contentType: 'application/json',
                           accept: 'application/json',
                           body: JSON.stringify(payload)
                         }
                                   │
                                   ▼
-                        Send to Bedrock Runtime
-                        await bedrock.send(command)
+                        Send through configured provider
+                        await llmService.generateText(options)
                                   │
                                   ▼
-                        Decode & Parse Response
-                        const text = parsed.content?.[0]?.text
+                        Read normalized response
+                        const text = result.content
                                   │
                                   ▼
                         Return Generated Text
@@ -482,7 +483,7 @@
         ┌─────────────────────────┼─────────────────────────┐
         │                         │                         │
         ▼                         ▼                         ▼
-  No Analyst Result         Bedrock API Error       Section Generation
+  No Analyst Result           Groq API Error        Section Generation
         │                         │                    Error
         │                         │                         │
         ▼                         ▼                         ▼

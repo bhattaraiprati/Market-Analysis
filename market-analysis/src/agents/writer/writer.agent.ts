@@ -1,14 +1,14 @@
 /**
  * Writer Agent
  * Converts structured analyst output into professional Markdown reports
- * Uses: Claude Sonnet 4.5 via AWS Bedrock for natural language generation
+ * Uses the centralized LLM service for natural language generation
  */
 
 import { Injectable } from '@nestjs/common';
 import { BaseAgent } from '../base/base.agent';
 import { AgentContext, AgentResult } from '../base/agent.types';
 import { AnalystResult } from '../analyst/analyst.agent';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { LlmService } from '../../llm/llm.service';
 
 /**
  * Writer agent result
@@ -23,26 +23,8 @@ export interface WriterResult {
 
 @Injectable()
 export class WriterAgent extends BaseAgent<WriterResult> {
-  private readonly bedrock: BedrockRuntimeClient;
-  private readonly modelId = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-
-  constructor() {
+  constructor(private readonly llmService: LlmService) {
     super('WriterAgent');
-
-    // Validate environment variables
-    if (!process.env.CLAUDE_ACCESS_KEY_ID || !process.env.CLAUDE_SECRET_ACCESS_KEY) {
-      throw new Error('AWS credentials not found. Please set CLAUDE_ACCESS_KEY_ID and CLAUDE_SECRET_ACCESS_KEY in .env file');
-    }
-
-    this.bedrock = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
-        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
-      },
-    });
-
-    this.logger.log(`Initialized Bedrock client for region: ${process.env.AWS_REGION || 'us-east-1'}`);
   }
 
   /**
@@ -175,7 +157,7 @@ Write a polished 2-3 paragraph executive summary that:
 Keep the tone professional and data-driven. Do NOT add markdown headers (I'll add them).
 Just return the paragraphs.`;
 
-    const content = await this.callClaude(systemPrompt, userPrompt, 1500, 0.6);
+    const content = await this.callLlm(systemPrompt, userPrompt, 1500, 0.6);
 
     return `## Executive Summary
 
@@ -230,7 +212,7 @@ Write a comprehensive market position section with these subsections:
 Use markdown formatting (###, **, bullets).
 Make it professional and data-driven.`;
 
-    const content = await this.callClaude(systemPrompt, userPrompt, 2500, 0.5);
+    const content = await this.callLlm(systemPrompt, userPrompt, 2500, 0.5);
 
     return `## Market Position & Competitive Landscape
 
@@ -265,7 +247,7 @@ Challengers: ${competitors.filter((c) => c.marketPosition === 'challenger').map(
 
 Keep it concise and professional.`;
 
-    const overview = await this.callClaude(systemPrompt, overviewPrompt, 1000, 0.5);
+    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.5);
     sections.push(overview.trim());
 
     // Detailed competitor profiles
@@ -331,7 +313,7 @@ ${[...new Set(gaps.map((g) => g.category))].join(', ')}
 
 Focus on urgency and strategic importance.`;
 
-    const overview = await this.callClaude(systemPrompt, overviewPrompt, 1000, 0.5);
+    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.5);
     sections.push(overview.trim());
 
     // Gap details by impact
@@ -394,7 +376,7 @@ Categories: ${[...new Set(recommendations.map((r) => r.category))].join(', ')}
 
 Emphasize action and implementation.`;
 
-    const overview = await this.callClaude(systemPrompt, overviewPrompt, 1000, 0.6);
+    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.6);
     sections.push(overview.trim());
 
     // Recommendations by priority
@@ -465,43 +447,23 @@ ${analystResult.competitorAnalyses.map((c) => `- ${c.competitorName} (${c.locati
   }
 
   /**
-   * Call Claude Sonnet 4.5 via Amazon Bedrock
+   * Invoke the configured LLM provider
    */
-  private async callClaude(
+  private async callLlm(
     systemPrompt: string,
     userPrompt: string,
     maxTokens = 4000,
     temperature = 0.6,
   ): Promise<string> {
-    const payload = {
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: maxTokens,
+    const result = await this.llmService.generateText({
+      task: 'writing',
+      systemPrompt,
+      userPrompt,
+      maxTokens,
       temperature,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: userPrompt }],
-        },
-      ],
-    };
-
-    const command = new InvokeModelCommand({
-      modelId: this.modelId,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(payload),
     });
 
-    const response = await this.bedrock.send(command);
-    const decoded = new TextDecoder().decode(response.body);
-    const parsed = JSON.parse(decoded);
-
-    const text = parsed.content?.[0]?.text;
-    if (!text) {
-      throw new Error('Empty response from Claude');
-    }
-    return text;
+    return result.content;
   }
 
   /**

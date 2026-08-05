@@ -1,10 +1,11 @@
-import { IsString, IsUUID, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateConversationDto {
   @IsUUID()
-  persona_id: string;
+  declare persona_id: string;
 
   @IsString()
-  @IsOptional()
-  title?: string;
+  @IsNotEmpty()
+  @MaxLength(10000)
+  declare content: string;
 }

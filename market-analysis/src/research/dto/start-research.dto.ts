@@ -15,7 +15,7 @@ export class StartResearchDto {
     example: ResearchType.COMPETITOR,
   })
   @IsEnum(ResearchType)
-  researchType: ResearchType;
+  declare researchType: ResearchType;
 
   @ApiProperty({
     description: 'Additional parameters for research',
@@ -24,5 +24,5 @@ export class StartResearchDto {
   })
   @IsOptional()
   @IsObject()
-  parameters?: Record<string, any>;
+  declare parameters?: Record<string, any>;
 }

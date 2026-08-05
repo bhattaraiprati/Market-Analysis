@@ -7,9 +7,9 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +17,8 @@ import { ConversationService } from './conversation.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { RateMessageDto } from './dto/rate-message.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Conversations')
 @ApiBearerAuth()
@@ -26,25 +28,30 @@ export class ConversationController {
   constructor(private readonly conversationService: ConversationService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new conversation with a persona' })
-  @ApiResponse({ status: 201, description: 'Conversation created successfully' })
+  @ApiOperation({
+    summary: 'Create a private conversation from the first user message',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Conversation and first message created successfully',
+  })
   async createConversation(
     @Body() createDto: CreateConversationDto,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
-    const conversation = await this.conversationService.createConversation(
+    const result = await this.conversationService.createConversation(
       createDto.persona_id,
-      userId,
+      user.userId,
       organizationId,
-      createDto.title,
+      createDto.content,
     );
 
     return {
       success: true,
-      data: conversation,
+      data: result,
+      message: 'Conversation created. Response will be generated shortly.',
     };
   }
 
@@ -53,13 +60,12 @@ export class ConversationController {
   @ApiResponse({ status: 200, description: 'Conversations retrieved successfully' })
   async getUserConversations(
     @Query('persona_id') personaId: string,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     const conversations = await this.conversationService.getUserConversations(
-      userId,
+      user.userId,
       organizationId,
       personaId,
     );
@@ -76,14 +82,13 @@ export class ConversationController {
   @ApiResponse({ status: 200, description: 'Conversation retrieved successfully' })
   async getConversation(
     @Param('id') conversationId: string,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     const conversation = await this.conversationService.getConversation(
       conversationId,
-      userId,
+      user.userId,
       organizationId,
     );
 
@@ -99,14 +104,13 @@ export class ConversationController {
   async sendMessage(
     @Param('id') conversationId: string,
     @Body() sendMessageDto: SendMessageDto,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     const message = await this.conversationService.sendMessage(
       conversationId,
-      userId,
+      user.userId,
       organizationId,
       sendMessageDto.content,
     );
@@ -126,15 +130,14 @@ export class ConversationController {
     @Param('id') conversationId: string,
     @Param('messageId') messageId: string,
     @Body() rateDto: RateMessageDto,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     await this.conversationService.rateMessage(
       messageId,
       conversationId,
-      userId,
+      user.userId,
       organizationId,
       rateDto.rating,
       rateDto.feedback,
@@ -152,14 +155,13 @@ export class ConversationController {
   @ApiResponse({ status: 200, description: 'Conversation archived successfully' })
   async archiveConversation(
     @Param('id') conversationId: string,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     await this.conversationService.archiveConversation(
       conversationId,
-      userId,
+      user.userId,
       organizationId,
     );
 
@@ -175,14 +177,13 @@ export class ConversationController {
   @ApiResponse({ status: 200, description: 'Conversation deleted successfully' })
   async deleteConversation(
     @Param('id') conversationId: string,
-    @Request() req: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user.id;
-    const organizationId = req.user.organization_id;
+    const organizationId = this.requireOrganizationId(user);
 
     await this.conversationService.deleteConversation(
       conversationId,
-      userId,
+      user.userId,
       organizationId,
     );
 
@@ -190,5 +191,15 @@ export class ConversationController {
       success: true,
       message: 'Conversation deleted successfully',
     };
+  }
+
+  private requireOrganizationId(user: CurrentUserData): string {
+    if (!user.organizationId) {
+      throw new BadRequestException(
+        'User must belong to an organization to use conversations',
+      );
+    }
+
+    return user.organizationId;
   }
 }

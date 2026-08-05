@@ -33,10 +33,11 @@ export class ConversationService {
     personaId: string,
     userId: string,
     organizationId: string,
-    title?: string,
-  ): Promise<Conversation> {
+    content: string,
+  ): Promise<{ conversation: Conversation; message: Message }> {
     try {
-      // Verify persona exists and user has access
+      // A persona can have many private conversations, but each conversation
+      // is owned by exactly one user.
       const persona = await this.personaModel.findOne({
         where: {
           id: personaId,
@@ -48,16 +49,62 @@ export class ConversationService {
         throw new NotFoundException('Persona not found');
       }
 
-      const conversation = await this.conversationModel.create({
-        organization_id: organizationId,
-        user_id: userId,
-        persona_id: personaId,
-        title: title || `Conversation with ${persona.name}`,
-        status: ConversationStatus.ACTIVE,
-      });
+      const transaction = await this.conversationModel.sequelize!.transaction();
+      let conversation: Conversation;
+      let userMessage: Message;
+      let assistantMessage: Message;
+
+      try {
+        const now = new Date();
+        conversation = await this.conversationModel.create(
+          {
+            organization_id: organizationId,
+            user_id: userId,
+            persona_id: personaId,
+            title: this.generateTitle(content),
+            status: ConversationStatus.ACTIVE,
+            total_messages: 2,
+            last_message_at: now,
+          },
+          { transaction },
+        );
+
+        userMessage = await this.messageModel.create(
+          {
+            conversation_id: conversation.id,
+            user_id: userId,
+            role: MessageRole.USER,
+            content: content.trim(),
+            status: MessageStatus.COMPLETED,
+          },
+          { transaction },
+        );
+
+        assistantMessage = await this.messageModel.create(
+          {
+            conversation_id: conversation.id,
+            role: MessageRole.ASSISTANT,
+            content: '',
+            status: MessageStatus.PROCESSING,
+          },
+          { transaction },
+        );
+
+        await persona.increment(
+          { total_conversations: 1, total_messages: 2 },
+          { transaction },
+        );
+        await persona.update({ last_used_at: now }, { transaction });
+        await transaction.commit();
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
 
       this.logger.log(`Conversation created: ${conversation.id}`);
-      return conversation;
+      void this.processMessage(conversation, userMessage, assistantMessage);
+
+      return { conversation, message: userMessage };
     } catch (error) {
       this.logger.error('Failed to create conversation', error);
       throw error;
@@ -126,9 +173,9 @@ export class ConversationService {
           {
             model: Message,
             as: 'messages',
-            order: [['created_at', 'ASC']],
           },
         ],
+        order: [[{ model: Message, as: 'messages' }, 'created_at', 'ASC']],
       });
 
       if (!conversation) {
@@ -155,29 +202,57 @@ export class ConversationService {
       // Verify conversation exists
       const conversation = await this.getConversation(conversationId, userId, organizationId);
 
-      // Create user message
-      const userMessage = await this.messageModel.create({
-        conversation_id: conversationId,
-        user_id: userId,
-        role: MessageRole.USER,
-        content,
-        status: MessageStatus.COMPLETED,
-      });
+      const transaction = await this.conversationModel.sequelize!.transaction();
+      let userMessage: Message;
+      let assistantMessage: Message;
+
+      try {
+        const now = new Date();
+        userMessage = await this.messageModel.create(
+          {
+            conversation_id: conversationId,
+            user_id: userId,
+            role: MessageRole.USER,
+            content: content.trim(),
+            status: MessageStatus.COMPLETED,
+          },
+          { transaction },
+        );
+
+        assistantMessage = await this.messageModel.create(
+          {
+            conversation_id: conversationId,
+            role: MessageRole.ASSISTANT,
+            content: '',
+            status: MessageStatus.PROCESSING,
+          },
+          { transaction },
+        );
+
+        await conversation.increment('total_messages', {
+          by: 2,
+          transaction,
+        });
+        await conversation.update({ last_message_at: now }, { transaction });
+        await this.personaModel.increment('total_messages', {
+          by: 2,
+          where: { id: conversation.persona_id },
+          transaction,
+        });
+        await this.personaModel.update(
+          { last_used_at: now },
+          { where: { id: conversation.persona_id }, transaction },
+        );
+        await transaction.commit();
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
 
       this.logger.log(`User message created: ${userMessage.id}`);
 
-      // Create assistant message placeholder
-      const assistantMessage = await this.messageModel.create({
-        conversation_id: conversationId,
-        role: MessageRole.ASSISTANT,
-        content: '',
-        status: MessageStatus.PROCESSING,
-      });
-
       // Process message asynchronously
-      this.processMessage(conversation, userMessage, assistantMessage).catch((error) => {
-        this.logger.error('Message processing failed', error);
-      });
+      void this.processMessage(conversation, userMessage, assistantMessage);
 
       return userMessage;
     } catch (error) {
@@ -270,18 +345,6 @@ export class ConversationService {
         total_tokens: 0, // TODO: Calculate from usage
       });
 
-      // Update conversation
-      await conversation.update({
-        total_messages: conversation.total_messages + 2,
-        last_message_at: new Date(),
-      });
-
-      // Auto-generate title if first exchange
-      if (conversation.total_messages === 2) {
-        const generatedTitle = this.generateTitle(userMessage.content);
-        await conversation.update({ title: generatedTitle });
-      }
-
       this.logger.log(`✅ Message processed successfully in ${processingTime}ms`);
     } catch (error) {
       this.logger.error('Failed to process message', error);
@@ -299,12 +362,12 @@ export class ConversationService {
    * Generate conversation title from first message
    */
   private generateTitle(firstMessage: string): string {
-    // Simple title generation - truncate and clean
-    let title = firstMessage.substring(0, 60);
-    if (firstMessage.length > 60) {
-      title += '...';
-    }
-    return title;
+    const normalized = firstMessage.replace(/\s+/g, ' ').trim();
+    const maxTitleLength = 80;
+
+    return normalized.length > maxTitleLength
+      ? `${normalized.slice(0, maxTitleLength - 3).trimEnd()}...`
+      : normalized;
   }
 
   /**

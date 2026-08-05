@@ -1,11 +1,10 @@
 /**
  * Searcher Agent
  * Finds and scrapes competitor information from the web
- * Uses: Groq (Llama 3.1) for query generation + Firecrawl MCP for scraping
+ * Uses the centralized LLM service for query generation + Firecrawl for scraping
  */
 
 import { Injectable } from '@nestjs/common';
-import Groq from 'groq-sdk';
 import FirecrawlApp from '@mendable/firecrawl-js';
 import { BaseAgent } from '../base/base.agent';
 import {
@@ -17,6 +16,7 @@ import {
   SourceType,
 } from '../base/agent.types';
 import { CompanyContextService } from '../../company-context/company-context.service';
+import { LlmService } from '../../llm/llm.service';
 
 interface SearcherResult {
   sources: ScrapedSource[];
@@ -27,16 +27,13 @@ interface SearcherResult {
 
 @Injectable()
 export class SearcherAgent extends BaseAgent<SearcherResult> {
-  private readonly groq: Groq;
   private readonly firecrawl: FirecrawlApp;
 
-  constructor(private readonly companyContextService: CompanyContextService) {
+  constructor(
+    private readonly companyContextService: CompanyContextService,
+    private readonly llmService: LlmService,
+  ) {
     super('SearcherAgent');
-
-    // Initialize Groq SDK
-    this.groq = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-    });
 
     // Initialize Firecrawl MCP
     this.firecrawl = new FirecrawlApp({
@@ -62,8 +59,10 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
       this.logger.log(`📍 Location: ${orgData.location}`);
       this.logger.log(`🎯 Known Competitors: ${orgData.knownCompetitors.join(', ')}`);
 
-      // 2. Generate competitor search queries using Groq
-      this.logStart('Generating search queries with Groq Llama 3.1...');
+      // 2. Generate competitor search queries using the shared LLM
+      this.logStart(
+        `Generating search queries with ${this.llmService.modelFor('search')}...`,
+      );
       const searchQueries = await this.generateCompetitorSearchQueries(
         context.companyContext,
         orgData,
@@ -115,7 +114,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
   }
 
   /**
-   * Generate competitor search queries using Groq Llama 3.1
+   * Generate competitor search queries using the shared LLM service
    */
   private async generateCompetitorSearchQueries(
     companyContext: string,
@@ -159,21 +158,16 @@ Return ONLY a JSON array of search queries in this exact format:
 Return ONLY valid JSON, no other text.`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a competitive intelligence expert. Return only valid JSON arrays.',
-          },
-          { role: 'user', content: prompt },
-        ],
+      const completion = await this.llmService.generateText({
+        task: 'search',
+        systemPrompt:
+          'You are a competitive intelligence expert. Return only valid JSON arrays.',
+        userPrompt: prompt,
         temperature: 0.6, // Here the temp is 0.3 before 
-        max_tokens: 2000,
+        maxTokens: 2000,
       });
 
-      const content = completion.choices[0]?.message?.content;
+      const content = completion.content;
       console.log('Groq response content:', content); // Debug log
       if (!content) {
         throw new Error('Empty response from Groq');
@@ -195,7 +189,7 @@ Return ONLY valid JSON, no other text.`;
   }
 
   /**
-   * Identify competitors using Groq
+   * Identify competitors using the shared LLM service
    */
   private async identifyCompetitors(
     orgData: { name: string; industry: string; location: string; knownCompetitors: string[] },
@@ -248,20 +242,16 @@ Return ONLY a JSON array with EXACTLY 5 competitors in this format:
 MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
 
     try {
-      const completion = await this.groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a competitive intelligence expert. Return only valid JSON arrays.',
-          },
-          { role: 'user', content: prompt },
-        ],
+      const completion = await this.llmService.generateText({
+        task: 'search',
+        systemPrompt:
+          'You are a competitive intelligence expert. Return only valid JSON arrays.',
+        userPrompt: prompt,
         temperature: 0.4,
-        max_tokens: 3000,
+        maxTokens: 3000,
       });
 
-      const content = completion.choices[0]?.message?.content;
+      const content = completion.content;
       if (!content) {
         throw new Error('Empty response from Groq');
       }

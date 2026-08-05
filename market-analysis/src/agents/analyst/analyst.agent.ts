@@ -1,7 +1,7 @@
 /**
  * Analyst Agent
  * Analyzes competitor data and generates strategic insights
- * Uses: Claude Sonnet 3.5 v2 via AWS Bedrock for deep reasoning and structured analysis
+ * Uses the centralized LLM service for deep reasoning and structured analysis
  */
 
 import { Injectable } from '@nestjs/common';
@@ -13,7 +13,7 @@ import {
   CompetitorInfo,
 } from '../base/agent.types';
 import { CompanyContextService } from '../../company-context/company-context.service';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { LlmService } from '../../llm/llm.service';
 
 /**
  * Structured analysis result
@@ -94,27 +94,11 @@ export interface AnalystResult {
 
 @Injectable()
 export class AnalystAgent extends BaseAgent<AnalystResult> {
-  private readonly bedrock: BedrockRuntimeClient;
-
-  private readonly modelId = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-
-  constructor(private readonly companyContextService: CompanyContextService) {
+  constructor(
+    private readonly companyContextService: CompanyContextService,
+    private readonly llmService: LlmService,
+  ) {
     super('AnalystAgent');
-
-    // Validate environment variables
-    if (!process.env.CLAUDE_ACCESS_KEY_ID || !process.env.CLAUDE_SECRET_ACCESS_KEY) {
-      throw new Error('AWS credentials not found. Please set CLAUDE_ACCESS_KEY_ID and CLAUDE_SECRET_ACCESS_KEY in .env file');
-    }
-
-    this.bedrock = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
-        secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
-      },
-    });
-
-    this.logger.log(`Initialized Bedrock client for region: ${process.env.AWS_REGION || 'us-east-1'}`);
   }
 
   /**
@@ -273,9 +257,10 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
   ): Promise<CompetitorAnalysis[]> {
     const analyses: CompetitorAnalysis[] = [];
 
-    // Analyze in batches of 3 to avoid rate limits
+    // Analyze one competitor at a time. The shared LLM service also paces
+    // calls against the configured rolling Groq TPM budget.
     const competitorNames = Array.from(sourcesByCompetitor.keys());
-    const batchSize = 3;
+    const batchSize = 1;
 
     for (let i = 0; i < competitorNames.length; i += batchSize) {
       const batch = competitorNames.slice(i, i + batchSize);
@@ -305,10 +290,6 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         }
       });
 
-      // Rate limiting
-      if (i + batchSize < competitorNames.length) {
-        await this.sleep(2000);
-      }
     }
 
     return analyses;
@@ -323,14 +304,9 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
     competitor: CompetitorInfo | undefined,
     companyContext: string,
   ): Promise<CompetitorAnalysis | null> {
-    // Combine all scraped content
-    const combinedContent = this.combineSourceContent(sources);
-
-    // Truncate if too long (Claude has token limits)
-    const maxLength = 30000; // ~10000 tokens (Claude has larger context)
-    const truncatedContent = combinedContent.length > maxLength
-      ? combinedContent.substring(0, maxLength) + '\n\n[Content truncated due to length...]'
-      : combinedContent;
+    // Build a balanced evidence packet instead of letting one large page use
+    // the entire Groq request budget.
+    const truncatedContent = this.combineSourceContent(sources, 6000, 1800);
 
     const systemPrompt = 'You are a competitive intelligence expert. Return only valid JSON objects.';
 
@@ -373,7 +349,7 @@ IMPORTANT:
 JSON:`;
 
     try {
-      const content = await this.callClaude(systemPrompt, userPrompt, 3000, 0.4);
+      const content = await this.callLlm(systemPrompt, userPrompt, 1200, 0.4);
 
       // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -468,7 +444,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const content = await this.callClaude(systemPrompt, userPrompt, 3000, 0.5);
+      const content = await this.callLlm(systemPrompt, userPrompt, 3000, 0.5);
 
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
@@ -535,7 +511,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const content = await this.callClaude(systemPrompt, userPrompt, 4000, 0.6);
+      const content = await this.callLlm(systemPrompt, userPrompt, 4000, 0.6);
 
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
@@ -596,7 +572,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const content = await this.callClaude(systemPrompt, userPrompt, 2000, 0.5);
+      const content = await this.callLlm(systemPrompt, userPrompt, 2000, 0.5);
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -677,7 +653,7 @@ Return ONLY valid JSON, no other text.
 JSON:`;
 
     try {
-      const content = await this.callClaude(systemPrompt, userPrompt, 2000, 0.6);
+      const content = await this.callLlm(systemPrompt, userPrompt, 2000, 0.6);
 
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -701,65 +677,52 @@ JSON:`;
   /**
    * Combine multiple source contents into one document
    */
-  private combineSourceContent(sources: ScrapedSource[]): string {
+  private combineSourceContent(
+    sources: ScrapedSource[],
+    maxTotalCharacters = 6000,
+    maxCharactersPerSource = 1800,
+  ): string {
     const sections: string[] = [];
+    let totalCharacters = 0;
 
     sources.forEach((source) => {
+      if (totalCharacters >= maxTotalCharacters) return;
+
       const pageType = source.metadata?.pageType || 'page';
-      sections.push(`\n--- ${pageType.toUpperCase()}: ${source.title} ---`);
-      sections.push(source.content);
+      const heading = `\n--- ${pageType.toUpperCase()}: ${source.title} ---\n`;
+      const remainingCharacters = maxTotalCharacters - totalCharacters;
+      const contentLimit = Math.max(
+        0,
+        Math.min(maxCharactersPerSource, remainingCharacters - heading.length),
+      );
+
+      if (contentLimit === 0) return;
+
+      const section = `${heading}${source.content.slice(0, contentLimit)}`;
+      sections.push(section);
+      totalCharacters += section.length;
     });
 
-    return sections.join('\n\n');
+    return `${sections.join('\n\n')}\n\n[Evidence limited to fit the LLM request budget.]`;
   }
 
   /**
-   * Sleep utility
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  /**
- * Call Claude Sonnet 4.5 via Amazon Bedrock
+ * Invoke the configured LLM provider
  */
-private async callClaude(
+private async callLlm(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 4000,
   temperature = 0.4,
 ): Promise<string> {
-  const payload = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: maxTokens,
+  const result = await this.llmService.generateText({
+    task: 'analysis',
+    systemPrompt,
+    userPrompt,
+    maxTokens,
     temperature,
-    system: systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: [{ type: 'text', text: userPrompt }],
-      },
-    ],
-  };
-
-  const command = new InvokeModelCommand({
-    modelId: this.modelId,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify(payload),
   });
 
-  const response = await this.bedrock.send(command);
-  const decoded = new TextDecoder().decode(response.body);
-  const parsed = JSON.parse(decoded);
-
-  // Claude returns content as an array
-  const text = parsed.content?.[0]?.text;
-  if (!text) {
-    throw new Error('Empty response from Claude');
-  }
-  return text;
+  return result.content;
 }
 }
-
-

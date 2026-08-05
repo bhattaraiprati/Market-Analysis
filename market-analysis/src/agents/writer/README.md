@@ -4,8 +4,8 @@ The **WriterAgent** is responsible for converting structured competitive intelli
 
 ## Overview
 
-- **Model:** Claude Sonnet 4.5 via Amazon Bedrock
-- **Model ID:** `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
+- **Provider:** Groq through the shared `LlmService`
+- **Default model:** `openai/gpt-oss-120b` (configurable with `GROQ_MODEL`)
 - **Purpose:** Generate professional reports from analyst output
 - **Input:** AnalystResult from AnalystAgent
 - **Output:** Professional Markdown report
@@ -145,52 +145,31 @@ These sections use direct formatting:
 - Recommendation Details
 - Appendix
 
-## Bedrock Integration
+## Shared LLM Integration
 
 ### Configuration
 
 ```typescript
-const bedrock = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.CLAUDE_ACCESS_KEY_ID,
-    secretAccessKey: process.env.CLAUDE_SECRET_ACCESS_KEY,
-  },
-});
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 ### API Call Pattern
 
 ```typescript
-const payload = {
-  anthropic_version: 'bedrock-2023-05-31',
-  max_tokens: 4000,
+const result = await this.llmService.generateText({
+  systemPrompt,
+  userPrompt,
+  maxTokens: 4000,
   temperature: 0.6,
-  system: systemPrompt,
-  messages: [
-    {
-      role: 'user',
-      content: [{ type: 'text', text: userPrompt }],
-    },
-  ],
-};
-
-const command = new InvokeModelCommand({
-  modelId: this.modelId,
-  contentType: 'application/json',
-  accept: 'application/json',
-  body: JSON.stringify(payload),
 });
-
-const response = await this.bedrock.send(command);
 ```
 
 ## Environment Variables
 
 Required:
-- `CLAUDE_ACCESS_KEY_ID` - AWS access key
-- `CLAUDE_SECRET_ACCESS_KEY` - AWS secret key
-- `AWS_REGION` - AWS region (default: us-east-1)
+- `GROQ_API_KEY` - Groq API key
+- `GROQ_MODEL` - Optional Groq model ID
 
 ## Usage
 
@@ -233,8 +212,8 @@ try {
 
 Common errors:
 - Missing analyst result
-- AWS credential issues
-- Bedrock API failures
+- Missing Groq API key
+- Groq API or rate-limit failures
 - JSON parsing errors (shouldn't happen with prose generation)
 
 ## Performance
@@ -243,7 +222,7 @@ Typical execution:
 - **Time:** 10-20 seconds (depends on data size)
 - **Word Count:** 2,000 - 5,000 words
 - **Tokens Used:** ~3,000 - 8,000 output tokens
-- **Bedrock Calls:** 5-7 (one per LLM-enhanced section)
+- **LLM Calls:** 5-7 (one per LLM-enhanced section)
 
 ## Testing
 
@@ -259,7 +238,7 @@ npm run test -- writer.agent.spec.ts
 2. **Use appropriate temperature:** 0.6 for creative writing, 0.4-0.5 for structured content
 3. **Monitor token usage:** Track costs per report
 4. **Cache where possible:** Consider caching company context
-5. **Handle rate limits:** Implement retry logic for Bedrock calls
+5. **Handle rate limits:** Implement retry logic in the shared LLM service
 
 ## Future Enhancements
 

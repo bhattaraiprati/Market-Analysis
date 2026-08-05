@@ -17,6 +17,7 @@ import { User } from './user.model';
 import { KnowledgeBase } from './knowledge-base.model';
 import { PersonaKnowledgeBase } from './persona-knowledge-base.model';
 import { PersonaPermission } from './persona-permission.model';
+import { Conversation } from './conversation.model';
 
 export enum PersonaRole {
   COMPETITIVE_ANALYST = 'COMPETITIVE_ANALYST',
@@ -175,4 +176,7 @@ export class Persona extends Model {
 
   @HasMany(() => PersonaPermission)
   declare permissions: PersonaPermission[];
+
+  @HasMany(() => Conversation)
+  declare conversations: Conversation[];
 }

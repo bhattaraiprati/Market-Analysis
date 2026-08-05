@@ -633,11 +633,18 @@ curl -X PATCH http://localhost:4000/personas/PERSONA_ID \
 Once a persona is created, it can be used in conversations:
 
 ```javascript
-// Start conversation with persona
+// Selecting a persona does not create a conversation. The conversation is
+// created only when the user submits the first message.
 POST /conversations
 {
   "persona_id": "persona-uuid",
-  "initial_message": "What are the top sales strategies?"
+  "content": "What are the top sales strategies?"
+}
+
+// The response contains data.conversation.id. Use it for follow-up messages:
+POST /conversations/{conversation-id}/messages
+{
+  "content": "Compare the first two strategies"
 }
 
 // The persona will:
