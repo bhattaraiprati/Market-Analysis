@@ -8,6 +8,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseAgent } from '../base/base.agent';
 import { AgentContext, AgentResult } from '../base/agent.types';
 import { LlmService } from '../../llm/llm.service';
+import { LlmGenerateResult } from '../../llm/llm.types';
 
 export interface QueryIntent {
   requiresWebSearch: boolean;
@@ -32,7 +33,9 @@ export class QueryRouterAgent extends BaseAgent<QueryIntent> {
     try {
       const userQuery = context.additionalParams?.userQuery as string;
       const personaConfig = context.additionalParams?.personaConfig as any;
-      const conversationHistory = context.additionalParams?.conversationHistory as any[];
+      const conversationHistory = context.additionalParams
+        ?.conversationHistory as any[];
+      const companyContext = context.companyContext;
 
       if (!userQuery) {
         throw new Error('User query is required');
@@ -40,14 +43,23 @@ export class QueryRouterAgent extends BaseAgent<QueryIntent> {
 
       // Build analysis prompt
       const systemPrompt = this.buildSystemPrompt(personaConfig);
-      const userPrompt = this.buildUserPrompt(userQuery, conversationHistory);
+      const userPrompt = this.buildUserPrompt(
+        userQuery,
+        conversationHistory,
+        companyContext,
+      );
 
       const analysisResponse = await this.callLlm(systemPrompt, userPrompt);
+      this.logger.log(
+        `Routing model: ${analysisResponse.model}, finishReason=${analysisResponse.finishReason || 'unknown'}`,
+      );
 
       // Parse response
-      const intent = this.parseIntentResponse(analysisResponse);
+      const intent = this.parseIntentResponse(analysisResponse.content);
 
-      this.logSuccess(`Query analyzed: webSearch=${intent.requiresWebSearch}, kb=${intent.requiresKnowledgeBase}, type=${intent.queryType}`);
+      this.logSuccess(
+        `Query analyzed: webSearch=${intent.requiresWebSearch}, kb=${intent.requiresKnowledgeBase}, type=${intent.queryType}`,
+      );
 
       return this.createSuccessResult<QueryIntent>(intent, {
         queryType: intent.queryType,
@@ -82,8 +94,11 @@ Analyze the user's query and determine:
 
 RULES:
 - If web search is DISABLED but query requires current data, set requiresWebSearch=false and explain limitation
+- If the user explicitly asks to search, browse, look up, research, or "do a web search", set requiresWebSearch=true when web search is enabled
 - If no knowledge base exists, set requiresKnowledgeBase=false
-- Queries about "uploaded documents", "my files", "company data" ALWAYS use knowledge base
+- The organization profile supplied with the query is trusted company context and does not require the knowledge base
+- Queries about "uploaded documents" or "my files" use the knowledge base
+- Requests about "our company" or "our competitors" should use the supplied organization profile to create a specific search query
 - Queries with temporal indicators like "today", "now", "latest", "current" likely need web search
 - General knowledge questions can use both sources
 - Conversational queries may not need either source
@@ -91,12 +106,20 @@ RULES:
 Respond in JSON format only.`;
   }
 
-  private buildUserPrompt(userQuery: string, conversationHistory?: any[]): string {
+  private buildUserPrompt(
+    userQuery: string,
+    conversationHistory?: any[],
+    companyContext?: string,
+  ): string {
     let prompt = `Analyze this user query:
 
 USER QUERY: "${userQuery}"
 
 `;
+
+    if (companyContext) {
+      prompt += `ORGANIZATION PROFILE (trusted database context):\n${companyContext}\n\n`;
+    }
 
     if (conversationHistory && conversationHistory.length > 0) {
       const recentHistory = conversationHistory.slice(-3);
@@ -138,16 +161,14 @@ Now analyze the user's query above.`;
   private async callLlm(
     systemPrompt: string,
     userPrompt: string,
-  ): Promise<string> {
-    const result = await this.llmService.generateText({
+  ): Promise<LlmGenerateResult> {
+    return this.llmService.generateText({
       task: 'routing',
       systemPrompt,
       userPrompt,
       maxTokens: 1000,
       temperature: 0.3,
     });
-
-    return result.content;
   }
 
   private parseIntentResponse(response: string): QueryIntent {
@@ -173,7 +194,9 @@ Now analyze the user's query above.`;
         temporalIndicators: parsed.temporalIndicators || [],
       };
     } catch (error) {
-      this.logger.warn('Failed to parse intent response as JSON, using fallback');
+      this.logger.warn(
+        'Failed to parse intent response as JSON, using fallback',
+      );
       // Fallback: try to infer from text
       return this.fallbackIntentParsing(response);
     }
@@ -183,8 +206,12 @@ Now analyze the user's query above.`;
     const lowerResponse = response.toLowerCase();
 
     return {
-      requiresWebSearch: lowerResponse.includes('web search') || lowerResponse.includes('current data'),
-      requiresKnowledgeBase: lowerResponse.includes('knowledge base') || lowerResponse.includes('documents'),
+      requiresWebSearch:
+        lowerResponse.includes('web search') ||
+        lowerResponse.includes('current data'),
+      requiresKnowledgeBase:
+        lowerResponse.includes('knowledge base') ||
+        lowerResponse.includes('documents'),
       queryType: 'conversational',
       confidence: 0.5,
       reasoning: 'Fallback parsing used',

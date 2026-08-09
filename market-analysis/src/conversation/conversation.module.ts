@@ -9,11 +9,14 @@ import { ConversationOrchestratorAgent } from '../agents/conversation-orchestrat
 import { QueryRouterAgent } from '../agents/query-router/query-router.agent';
 import { WriterAgent } from '../agents/writer/writer.agent';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
+import { CompanyContextModule } from '../company-context/company-context.module';
+import { ConversationWebSearchService } from './conversation-web-search.service';
 
 @Module({
   imports: [
     SequelizeModule.forFeature([Conversation, Message, Persona]),
     KnowledgeBaseModule,
+    CompanyContextModule,
   ],
   controllers: [ConversationController],
   providers: [
@@ -21,6 +24,7 @@ import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
     ConversationOrchestratorAgent,
     QueryRouterAgent,
     WriterAgent,
+    ConversationWebSearchService,
   ],
   exports: [ConversationService],
 })

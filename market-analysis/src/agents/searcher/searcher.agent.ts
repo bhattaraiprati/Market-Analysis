@@ -25,6 +25,27 @@ interface SearcherResult {
   executionTimeMs: number;
 }
 
+interface CompetitorSearchResult {
+  query: string;
+  title: string;
+  url: string;
+  description: string;
+}
+
+interface FirecrawlSearchDocument {
+  url?: string;
+  title?: string;
+  description?: string;
+  markdown?: string;
+  metadata?: {
+    title?: string;
+    ogTitle?: string;
+    description?: string;
+    ogDescription?: string;
+    sourceURL?: string;
+  };
+}
+
 @Injectable()
 export class SearcherAgent extends BaseAgent<SearcherResult> {
   private readonly firecrawl: FirecrawlApp;
@@ -35,9 +56,16 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
   ) {
     super('SearcherAgent');
 
-    // Initialize Firecrawl MCP
+    const firecrawlApiKey =
+      process.env.FIRECRAWL_API_KEY || process.env.Firecrawl_API_KEY;
+    if (!firecrawlApiKey) {
+      throw new Error(
+        'FIRECRAWL_API_KEY is required for competitor search and scraping',
+      );
+    }
+
     this.firecrawl = new FirecrawlApp({
-      apiKey: process.env.Firecrawl_API_KEY,
+      apiKey: firecrawlApiKey,
     });
   }
 
@@ -45,7 +73,9 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
    * Main execution method
    */
   async execute(context: AgentContext): Promise<AgentResult<SearcherResult>> {
-    this.logStart(`Starting competitor search for organization ${context.organizationId}`);
+    this.logStart(
+      `Starting competitor search for organization ${context.organizationId}`,
+    );
 
     const startTime = Date.now();
 
@@ -57,7 +87,9 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
 
       this.logger.log(`📋 Organization: ${orgData.name} (${orgData.industry})`);
       this.logger.log(`📍 Location: ${orgData.location}`);
-      this.logger.log(`🎯 Known Competitors: ${orgData.knownCompetitors.join(', ')}`);
+      this.logger.log(
+        `🎯 Known Competitors: ${orgData.knownCompetitors.join(', ')}`,
+      );
 
       // 2. Generate competitor search queries using the shared LLM
       this.logStart(
@@ -70,26 +102,44 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
 
       this.logSuccess(`Generated ${searchQueries.length} search queries`);
 
-      // 3. Identify competitor websites
+      // 3. Execute the generated queries so competitor selection is grounded
+      // in current web results rather than relying only on the LLM's memory.
+      this.logStart('Searching the web for competitor evidence...');
+      const searchResults = await this.executeSearchQueries(searchQueries);
+
+      this.logSuccess(`Collected ${searchResults.length} web search results`);
+
+      // 4. Identify competitor websites from the search evidence
       this.logStart('Identifying competitor websites...');
       const competitors = await this.identifyCompetitors(
         orgData,
         context.companyContext,
+        searchResults,
       );
 
       this.logSuccess(`Identified ${competitors.length} competitors`);
 
-      // 4. Scrape competitor homepages using Firecrawl
+      // 5. Scrape competitor homepages using Firecrawl
       this.logStart('Scraping competitor homepages with Firecrawl...');
-      const homepageSources = await this.scrapeCompetitorSources(competitors, orgData);
+      const homepageSources = await this.scrapeCompetitorSources(
+        competitors,
+        orgData,
+      );
 
-      this.logSuccess(`Successfully scraped ${homepageSources.length} homepages`);
+      this.logSuccess(
+        `Successfully scraped ${homepageSources.length} homepages`,
+      );
 
-      // 5. Enrich with deep page scraping (NEW)
+      // 6. Enrich with deep page scraping
       this.logStart('Enriching with deep page scraping...');
-      const allSources = await this.enrichWithDeepPages(homepageSources, competitors);
+      const allSources = await this.enrichWithDeepPages(
+        homepageSources,
+        competitors,
+      );
 
-      this.logSuccess(`Total sources after enrichment: ${allSources.length} (${allSources.length - homepageSources.length} deep pages)`);
+      this.logSuccess(
+        `Total sources after enrichment: ${allSources.length} (${allSources.length - homepageSources.length} deep pages)`,
+      );
 
       const executionTimeMs = Date.now() - startTime;
 
@@ -102,6 +152,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
         },
         {
           queriesGenerated: searchQueries.length,
+          searchResultsFound: searchResults.length,
           competitorsFound: competitors.length,
           homepagesScraped: homepageSources.length,
           deepPagesScraped: allSources.length - homepageSources.length,
@@ -113,12 +164,72 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
     }
   }
 
+  /** Execute generated queries with Firecrawl Search in small batches. */
+  private async executeSearchQueries(
+    queries: SearchQuery[],
+  ): Promise<CompetitorSearchResult[]> {
+    const results: CompetitorSearchResult[] = [];
+    const seenUrls = new Set<string>();
+    const batchSize = 3;
+
+    for (let i = 0; i < queries.length; i += batchSize) {
+      const batch = queries.slice(i, i + batchSize);
+      const responses = await Promise.allSettled(
+        batch.map(async ({ query }) => {
+          const response = await this.firecrawl.search(query, { limit: 5 });
+          return {
+            query,
+            documents: (response.web || []) as FirecrawlSearchDocument[],
+          };
+        }),
+      );
+
+      responses.forEach((response, index) => {
+        if (response.status === 'rejected') {
+          this.logger.warn(
+            `Search failed for "${batch[index].query}": ${response.reason}`,
+          );
+          return;
+        }
+
+        for (const document of response.value.documents) {
+          const url = document.url || document.metadata?.sourceURL || '';
+          if (!url || seenUrls.has(url)) continue;
+
+          seenUrls.add(url);
+          results.push({
+            query: response.value.query,
+            title:
+              document.title ||
+              document.metadata?.title ||
+              document.metadata?.ogTitle ||
+              'Untitled',
+            url,
+            description:
+              document.description ||
+              document.metadata?.description ||
+              document.metadata?.ogDescription ||
+              document.markdown?.slice(0, 500) ||
+              '',
+          });
+        }
+      });
+    }
+
+    return results;
+  }
+
   /**
    * Generate competitor search queries using the shared LLM service
    */
   private async generateCompetitorSearchQueries(
     companyContext: string,
-    orgData: { name: string; industry: string; location: string; knownCompetitors: string[] },
+    orgData: {
+      name: string;
+      industry: string;
+      location: string;
+      knownCompetitors: string[];
+    },
   ): Promise<SearchQuery[]> {
     const prompt = `You are a competitive intelligence researcher. Your task is to generate highly specific search queries to find competitors.
 
@@ -163,7 +274,7 @@ Return ONLY valid JSON, no other text.`;
         systemPrompt:
           'You are a competitive intelligence expert. Return only valid JSON arrays.',
         userPrompt: prompt,
-        temperature: 0.6, // Here the temp is 0.3 before 
+        temperature: 0.6, // Here the temp is 0.3 before
         maxTokens: 2000,
       });
 
@@ -192,9 +303,30 @@ Return ONLY valid JSON, no other text.`;
    * Identify competitors using the shared LLM service
    */
   private async identifyCompetitors(
-    orgData: { name: string; industry: string; location: string; knownCompetitors: string[] },
+    orgData: {
+      name: string;
+      industry: string;
+      location: string;
+      knownCompetitors: string[];
+    },
     companyContext: string,
+    searchResults: CompetitorSearchResult[],
   ): Promise<CompetitorInfo[]> {
+    if (searchResults.length === 0) {
+      this.logger.warn(
+        'No web search results were available; falling back to known competitors',
+      );
+      return this.getFallbackCompetitors(orgData);
+    }
+
+    const evidence = searchResults
+      .slice(0, 50)
+      .map(
+        (result, index) =>
+          `${index + 1}. ${result.title}\nURL: ${result.url}\nSnippet: ${result.description}`,
+      )
+      .join('\n\n');
+
     const prompt = `You are a competitive intelligence analyst. Identify the TOP 5 competitors for this company.
 
 COMPANY CONTEXT:
@@ -203,12 +335,18 @@ ${companyContext}
 LOCATION: ${orgData.location}
 KNOWN COMPETITORS: ${orgData.knownCompetitors.join(', ')}
 
+CURRENT WEB SEARCH EVIDENCE:
+${evidence}
+
 CRITICAL INSTRUCTIONS:
 - Identify EXACTLY 5 competitors total (not more, not less)
 - PRIORITIZE ${orgData.location} based competitors (domestic market leaders FIRST)
 - Only include if ${orgData.location} has fewer than 5 major competitors, then add international leaders
 - Focus on the MOST SIGNIFICANT competitors only (market leaders, not small players)
 - Include accurate company websites
+- Base every selection on the web evidence above
+- Use the company's official homepage URL, derived from an evidence URL
+- Do not invent a company or website that is absent from the evidence
 
 PRIORITY ORDER:
 1. TOP domestic competitors in ${orgData.location} (highest priority)
@@ -264,19 +402,71 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
 
       const competitors: CompetitorInfo[] = JSON.parse(jsonMatch[0]);
 
+      // Reject hallucinated or malformed websites. A selected company's host
+      // must have appeared in the current search evidence.
+      const evidenceHosts = new Set(
+        searchResults
+          .map((result) => this.getHostname(result.url))
+          .filter((host): host is string => Boolean(host)),
+      );
+      const seenCompetitorHosts = new Set<string>();
+      const groundedCompetitors = competitors
+        .filter((competitor) => {
+          const host = this.getHostname(competitor.website);
+          if (
+            !host ||
+            !evidenceHosts.has(host) ||
+            seenCompetitorHosts.has(host)
+          ) {
+            return false;
+          }
+          seenCompetitorHosts.add(host);
+          return true;
+        })
+        .map((competitor) => ({
+          ...competitor,
+          website: this.getWebsiteOrigin(competitor.website),
+        }));
+
       // Sort by priority (domestic first) and limit to top 5
-      const sortedCompetitors = competitors.sort((a, b) => {
+      const sortedCompetitors = groundedCompetitors.sort((a, b) => {
         if (a.priority === 'domestic' && b.priority !== 'domestic') return -1;
         if (a.priority !== 'domestic' && b.priority === 'domestic') return 1;
         return 0;
       });
 
       // Ensure we return exactly 5 competitors (domestic prioritized)
+      if (sortedCompetitors.length === 0) {
+        throw new Error(
+          'LLM returned no competitors grounded in search results',
+        );
+      }
+
       return sortedCompetitors.slice(0, 5);
     } catch (error) {
       this.logError('Failed to identify competitors', error);
       // Fallback to known competitors
       return this.getFallbackCompetitors(orgData);
+    }
+  }
+
+  private getHostname(url?: string): string | null {
+    if (!url) return null;
+
+    try {
+      return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      return null;
+    }
+  }
+
+  private getWebsiteOrigin(url?: string): string | undefined {
+    if (!url) return undefined;
+
+    try {
+      return new URL(url).origin;
+    } catch {
+      return undefined;
     }
   }
 
@@ -290,7 +480,9 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
     const sources: ScrapedSource[] = [];
 
     // Prioritize domestic competitors
-    const domesticCompetitors = competitors.filter((c) => c.priority === 'domestic');
+    const domesticCompetitors = competitors.filter(
+      (c) => c.priority === 'domestic',
+    );
     const internationalCompetitors = competitors.filter(
       (c) => c.priority === 'international',
     );
@@ -365,13 +557,13 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
     }
 
     try {
-    const result = await this.firecrawl.scrapeUrl(competitor.website, {
-          formats: ['markdown'],
-          onlyMainContent: false,
-          blockAds: true,
-          excludeTags: ['aside', '.ad', '#ad-container'], // Optional custom HTML tags/selectors to drop
-          waitFor: 2000,
-        });
+      const result = await this.firecrawl.scrapeUrl(competitor.website, {
+        formats: ['markdown'],
+        onlyMainContent: false,
+        blockAds: true,
+        excludeTags: ['aside', '.ad', '#ad-container'], // Optional custom HTML tags/selectors to drop
+        waitFor: 2000,
+      });
       this.logger.log(`The Scrape result for ${competitor.name} is:`, result);
       if (!result || !result.markdown) {
         throw new Error('No content returned from Firecrawl');
@@ -393,9 +585,7 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
         scrapedAt: new Date(),
       };
     } catch (error) {
-      this.logger.error(
-        `Failed to scrape ${competitor.website}: ${error}`,
-      );
+      this.logger.error(`Failed to scrape ${competitor.website}: ${error}`);
       return null;
     }
   }
@@ -439,12 +629,12 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
   }): CompetitorInfo[] {
     // Map of known Nepali fintech competitors to their websites
     const nepaliCompetitorWebsites: Record<string, string> = {
-      'Khalti': 'https://khalti.com',
+      Khalti: 'https://khalti.com',
       'IME Pay': 'https://www.imepay.com.np',
-      'ConnectIPS': 'https://www.connectips.com',
+      ConnectIPS: 'https://www.connectips.com',
       'Namaste Pay': 'https://namastepay.com.np',
-      'eSewa': 'https://esewa.com.np',
-      'Fonepay': 'https://fonepay.com',
+      eSewa: 'https://esewa.com.np',
+      Fonepay: 'https://fonepay.com',
       'Prabhu Pay': 'https://prabhupay.com',
     };
 
@@ -486,7 +676,9 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
       }
     });
 
-    this.logger.log(`🔍 Starting deep page analysis for ${homepageSources.length} homepages...`);
+    this.logger.log(
+      `🔍 Starting deep page analysis for ${homepageSources.length} homepages...`,
+    );
 
     // Process each homepage to extract and scrape deep pages
     for (let i = 0; i < homepageSources.length; i++) {
@@ -495,11 +687,15 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
       const competitor = competitorMap.get(baseUrl);
 
       if (!competitor) {
-        this.logger.warn(`⚠️ No competitor found for ${homepageSource.url}, skipping deep scrape`);
+        this.logger.warn(
+          `⚠️ No competitor found for ${homepageSource.url}, skipping deep scrape`,
+        );
         continue;
       }
 
-      this.logger.log(`\n📄 Analyzing homepage: ${competitor.name} (${homepageSource.url})`);
+      this.logger.log(
+        `\n📄 Analyzing homepage: ${competitor.name} (${homepageSource.url})`,
+      );
 
       try {
         // Extract candidate URLs from the markdown content
@@ -516,9 +712,14 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
         this.logger.log(`  📋 Found ${candidateUrls.length} candidate URLs`);
 
         // Score and select priority URLs (max 6-7)
-        const priorityUrls = this.scoreAndSelectPriorityUrls(candidateUrls, baseUrl);
+        const priorityUrls = this.scoreAndSelectPriorityUrls(
+          candidateUrls,
+          baseUrl,
+        );
 
-        this.logger.log(`  ✅ Selected ${priorityUrls.length} priority URLs for deep scraping`);
+        this.logger.log(
+          `  ✅ Selected ${priorityUrls.length} priority URLs for deep scraping`,
+        );
 
         // Log selected URLs with their detected page types
         priorityUrls.forEach((url) => {
@@ -609,16 +810,32 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
     // Define priority keywords with scores
     const priorityPatterns: Array<{ pattern: RegExp; score: number }> = [
       // High priority (score 100-80)
-      { pattern: /\b(pricing|price|plans?|charges?|fees?|cost)\b/i, score: 100 },
+      {
+        pattern: /\b(pricing|price|plans?|charges?|fees?|cost)\b/i,
+        score: 100,
+      },
       { pattern: /\b(transaction[s-]?limit|limits?)\b/i, score: 95 },
-      { pattern: /\b(about[- ]?us|who[- ]?we[- ]?are|company|our[- ]?story)\b/i, score: 90 },
-      { pattern: /\b(business|enterprise|merchant[s]?|payment[- ]?gateway|for[- ]?business)\b/i, score: 85 },
+      {
+        pattern: /\b(about[- ]?us|who[- ]?we[- ]?are|company|our[- ]?story)\b/i,
+        score: 90,
+      },
+      {
+        pattern:
+          /\b(business|enterprise|merchant[s]?|payment[- ]?gateway|for[- ]?business)\b/i,
+        score: 85,
+      },
 
       // Medium priority (score 70-50)
       { pattern: /\b(features?|products?|services?|solutions?)\b/i, score: 70 },
       { pattern: /\b(faq|help|support|contact[- ]?us)\b/i, score: 65 },
-      { pattern: /\b(how[- ]?it[- ]?works?|getting[- ]?started|guide)\b/i, score: 60 },
-      { pattern: /\b(api|developers?|integration|documentation|docs)\b/i, score: 55 },
+      {
+        pattern: /\b(how[- ]?it[- ]?works?|getting[- ]?started|guide)\b/i,
+        score: 60,
+      },
+      {
+        pattern: /\b(api|developers?|integration|documentation|docs)\b/i,
+        score: 55,
+      },
 
       // Low priority (score 40-20)
       { pattern: /\b(blog|news|press|media|articles?)\b/i, score: 40 },
@@ -700,7 +917,7 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
         const result = await this.firecrawl.scrapeUrl(url, {
           formats: ['markdown'],
           onlyMainContent: false,
-          blockAds: true, 
+          blockAds: true,
           excludeTags: ['aside', '.ad', '#ad-container'], // Optional custom HTML tags/selectors to drop
           waitFor: 2000,
         });
@@ -711,7 +928,9 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
 
         // Skip if content is too short (likely error page or poor content)
         if (result.markdown.length < 200) {
-          this.logger.warn(`  ⚠️ Skipping ${url} - content too short (${result.markdown.length} chars)`);
+          this.logger.warn(
+            `  ⚠️ Skipping ${url} - content too short (${result.markdown.length} chars)`,
+          );
           return null;
         }
 
@@ -733,7 +952,8 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
           scrapedAt: new Date(),
         };
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
 
         if (attempt === retries) {
           this.logger.warn(
@@ -759,10 +979,18 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
     if (/\b(transaction[s-]?limit|limits?)\b/.test(urlLower)) {
       return 'limits';
     }
-    if (/\b(about[- ]?us|who[- ]?we[- ]?are|company|our[- ]?story)\b/.test(urlLower)) {
+    if (
+      /\b(about[- ]?us|who[- ]?we[- ]?are|company|our[- ]?story)\b/.test(
+        urlLower,
+      )
+    ) {
       return 'about';
     }
-    if (/\b(business|enterprise|merchant[s]?|payment[- ]?gateway|for[- ]?business)\b/.test(urlLower)) {
+    if (
+      /\b(business|enterprise|merchant[s]?|payment[- ]?gateway|for[- ]?business)\b/.test(
+        urlLower,
+      )
+    ) {
       return 'business';
     }
     if (/\b(features?|products?|services?|solutions?)\b/.test(urlLower)) {

@@ -39,6 +39,7 @@ interface GroqErrorLike {
   status?: number;
   message?: string;
   headers?: Headers;
+  error?: unknown;
 }
 
 @Injectable()
@@ -127,6 +128,20 @@ export class LlmService {
           continue;
         }
 
+        if (this.isUnexpectedToolCall(groqError)) {
+          this.logger.warn(
+            `Groq ${slot.name}/${model} attempted an unavailable tool; trying another key or model`,
+          );
+          continue;
+        }
+
+        if (this.isEmptyResponse(groqError)) {
+          this.logger.warn(
+            `Groq ${slot.name}/${model} returned no text; trying another key or model`,
+          );
+          continue;
+        }
+
         if (this.isRetryable(groqError.status)) {
           const cooldownMs = this.getCooldownMs(groqError.headers);
           slot.cooldowns.set(model, Date.now() + cooldownMs);
@@ -152,8 +167,14 @@ export class LlmService {
     model: string,
     options: LlmGenerateOptions,
   ): Promise<LlmGenerateResult> {
+    const toolPolicy = `TOOL POLICY:
+- You have no callable tools in this request.
+- External retrieval, including web search, has already been completed by the application when relevant.
+- Never emit a tool call, function call, browser.search request, or tool-call JSON.
+- Return the requested answer directly as plain assistant text.`;
+    const systemPrompt = `${toolPolicy}\n\n${options.systemPrompt}`;
     const estimatedInputTokens = this.estimateTokens(
-      `${options.systemPrompt}\n${options.userPrompt}`,
+      `${systemPrompt}\n${options.userPrompt}`,
     );
     const availableCompletionTokens =
       this.maxRequestTokens - estimatedInputTokens;
@@ -176,9 +197,10 @@ export class LlmService {
     const completion = await client.chat.completions.create({
       model,
       messages: [
-        { role: 'system', content: options.systemPrompt },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: options.userPrompt },
       ],
+      tool_choice: 'none',
       max_tokens: maxTokens,
       temperature: options.temperature ?? 0.5,
     });
@@ -187,6 +209,9 @@ export class LlmService {
     const content = choice?.message?.content;
 
     if (!content) {
+      this.logger.warn(
+        `Empty Groq completion: model=${completion.model || model}, finishReason=${choice?.finish_reason || 'unknown'}, promptTokens=${completion.usage?.prompt_tokens ?? 0}, completionTokens=${completion.usage?.completion_tokens ?? 0}`,
+      );
       throw new Error(`Groq returned an empty response from model ${model}`);
     }
 
@@ -200,6 +225,10 @@ export class LlmService {
         totalTokens: completion.usage?.total_tokens ?? 0,
       },
     };
+  }
+
+  private isEmptyResponse(error: GroqErrorLike): boolean {
+    return Boolean(error.message?.includes('Groq returned an empty response'));
   }
 
   private selectCandidate(
@@ -274,6 +303,23 @@ export class LlmService {
       status === 413 ||
       status === 429 ||
       Boolean(status && status >= 500)
+    );
+  }
+
+  private isUnexpectedToolCall(error: GroqErrorLike): boolean {
+    let errorBody = '';
+    try {
+      errorBody = JSON.stringify(error.error ?? '');
+    } catch {
+      errorBody = '';
+    }
+
+    const details = `${error.message ?? ''} ${errorBody}`.toLowerCase();
+    return (
+      error.status === 400 &&
+      (details.includes('tool_use_failed') ||
+        details.includes('tool choice is none') ||
+        details.includes('browser.search'))
     );
   }
 

@@ -48,7 +48,7 @@ describe('LlmService', () => {
     expect(createCompletion).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'test-model',
-        max_tokens: 7196,
+        max_tokens: 7092,
       }),
     );
     expect(result).toEqual({

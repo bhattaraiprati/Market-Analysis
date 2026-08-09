@@ -55,6 +55,7 @@ export class CompanyContextService {
     // Company Profile
     sections.push('# COMPANY PROFILE');
     sections.push(`Company Name: ${org.name}`);
+    if (org.description) sections.push(`Description: ${org.description}`);
     sections.push(`Industry: ${org.industry}`);
     if (org.website) sections.push(`Website: ${org.website}`);
     if (org.location) sections.push(`Location: ${org.location}`);

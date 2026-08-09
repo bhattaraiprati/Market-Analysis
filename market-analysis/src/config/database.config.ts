@@ -13,7 +13,9 @@ import { PersonaPermission } from '../models/persona-permission.model';
 import { Conversation } from '../models/conversation.model';
 import { Message } from '../models/message.model';
 
-export const getDatabaseConfig = (configService: ConfigService): SequelizeModuleOptions => {
+export const getDatabaseConfig = (
+  configService: ConfigService,
+): SequelizeModuleOptions => {
   const databaseUrl = configService.get<string>('DATABASE_URL');
 
   // If DATABASE_URL is provided (Neon or other cloud providers), parse it
@@ -28,6 +30,7 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
       password: url.password,
       database: url.pathname.slice(1), // Remove leading '/'
       dialectOptions: {
+        keepAlive: true,
         ssl: {
           require: true,
           rejectUnauthorized: false, // Required for Neon and most cloud PostgreSQL providers
@@ -55,6 +58,7 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
         min: 0,
         acquire: 30000,
         idle: 10000,
+        evict: 1000,
       },
     };
   }
@@ -67,7 +71,13 @@ export const getDatabaseConfig = (configService: ConfigService): SequelizeModule
     username: configService.get<string>('DB_USERNAME', 'postgres'),
     password: configService.get<string>('DB_PASSWORD', 'postgres'),
     database: configService.get<string>('DB_NAME', 'market_analysis'),
-    models: [User, Organization, OrganizationMember, ResearchJob, ResearchSource],
+    models: [
+      User,
+      Organization,
+      OrganizationMember,
+      ResearchJob,
+      ResearchSource,
+    ],
     autoLoadModels: true,
     synchronize: configService.get<string>('NODE_ENV') === 'development',
     logging: false, // Disable SQL query logging

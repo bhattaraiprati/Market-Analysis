@@ -94,7 +94,7 @@ export class ConversationController {
 
     return {
       success: true,
-      data: conversation,
+      data: this.conversationService.toResponse(conversation),
     };
   }
 

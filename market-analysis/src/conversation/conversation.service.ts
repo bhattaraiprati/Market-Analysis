@@ -10,6 +10,9 @@ import { Message, MessageRole, MessageStatus } from '../models/message.model';
 import { Persona } from '../models/persona.model';
 import { ConversationOrchestratorAgent } from '../agents/conversation-orchestrator/conversation-orchestrator.agent';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
+import { CompanyContextService } from '../company-context/company-context.service';
+import { ConversationWebSearchService } from './conversation-web-search.service';
+import { repairMojibake } from '../common/utils/text-encoding.util';
 
 @Injectable()
 export class ConversationService {
@@ -24,6 +27,8 @@ export class ConversationService {
     private personaModel: typeof Persona,
     private conversationOrchestrator: ConversationOrchestratorAgent,
     private knowledgeBaseService: KnowledgeBaseService,
+    private companyContextService: CompanyContextService,
+    private webSearchService: ConversationWebSearchService,
   ) {}
 
   /**
@@ -189,6 +194,17 @@ export class ConversationService {
     }
   }
 
+  toResponse(conversation: Conversation): Record<string, unknown> {
+    const response = conversation.toJSON() as Record<string, any>;
+    if (Array.isArray(response.messages)) {
+      response.messages = response.messages.map((message: any) => ({
+        ...message,
+        content: repairMojibake(String(message.content || '')),
+      }));
+    }
+    return response;
+  }
+
   /**
    * Send a message in a conversation (main entry point for chat)
    */
@@ -274,7 +290,10 @@ export class ConversationService {
     try {
       // Load persona configuration
       const persona = await this.personaModel.findOne({
-        where: { id: conversation.persona_id },
+        where: {
+          id: conversation.persona_id,
+          organization_id: conversation.organization_id,
+        },
         include: ['knowledgeBases'],
       });
 
@@ -306,25 +325,23 @@ export class ConversationService {
         knowledgeBaseIds: persona.knowledgeBases?.map((kb: any) => kb.id) || [],
       };
 
+      const companyContext = await this.companyContextService.loadContext(
+        conversation.organization_id,
+      );
+
       // Execute conversation orchestrator
       this.logger.log(`🚀 Processing query: "${userMessage.content}"`);
 
       const result = await this.conversationOrchestrator.execute({
         organizationId: conversation.organization_id,
         researchJobId: '', // Not needed for conversations
-        companyContext: '', // Not needed for conversations
+        companyContext,
         additionalParams: {
           userQuery: userMessage.content,
           personaConfig,
           conversationHistory,
           knowledgeBaseService: this.knowledgeBaseService,
-          // TODO: Implement web search functionality
-          // searchService: {
-          //   search: async (query: string) => {
-          //     // Web search not yet implemented
-          //     return [];
-          //   },
-          // },
+          searchService: this.webSearchService,
         },
       });
 
@@ -342,7 +359,9 @@ export class ConversationService {
         sources_used: result.data.sourcesUsed,
         processing_time_ms: processingTime,
         model_used: result.data.modelUsed,
-        total_tokens: 0, // TODO: Calculate from usage
+        prompt_tokens: result.data.usage.promptTokens,
+        completion_tokens: result.data.usage.completionTokens,
+        total_tokens: result.data.usage.totalTokens,
       });
 
       this.logger.log(`✅ Message processed successfully in ${processingTime}ms`);
