@@ -166,17 +166,18 @@ export interface Conversation {
   user_id: string;
   organization_id: string;
   title: string;
-  status: 'ACTIVE' | 'ARCHIVED';
+  status: 'active' | 'archived';
   last_message_at?: string;
-  message_count?: number;
+  total_messages: number;
   created_at: string;
 }
 
 export interface Message {
   id: string;
   conversation_id: string;
-  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   rating?: number;
   feedback?: string;
   sources_used?: Array<{
@@ -194,6 +195,11 @@ export interface ConversationWithMessages extends Conversation {
     avatar_url?: string;
   };
   messages: Message[];
+}
+
+export interface StartConversationResult {
+  conversation: Conversation;
+  message: Message;
 }
 
 // Research Types

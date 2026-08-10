@@ -3,13 +3,14 @@ import {
   Conversation,
   ConversationWithMessages,
   Message,
+  StartConversationResult,
   ApiResponse,
 } from '@/types/api';
 
 export const conversationApi = {
-  // Create new conversation
-  create: async (data: { persona_id: string; title?: string }) => {
-    const response = await axiosInstance.post<ApiResponse<Conversation>>(
+  // Create a conversation only when the user sends its first message
+  start: async (data: { persona_id: string; content: string }) => {
+    const response = await axiosInstance.post<ApiResponse<StartConversationResult>>(
       '/conversations',
       data
     );

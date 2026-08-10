@@ -1,10 +1,18 @@
 import { create } from 'zustand';
+import axios from 'axios';
 import {
   Conversation,
   ConversationWithMessages,
-  Message,
 } from '@/types/api';
 import { conversationApi } from '../api/conversation';
+
+function getConversationError(error: unknown, fallback: string) {
+  if (axios.isAxiosError<{ message?: string | string[] }>(error)) {
+    const message = error.response?.data?.message;
+    return Array.isArray(message) ? message.join(', ') : message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 interface ConversationState {
   // State
@@ -17,7 +25,7 @@ interface ConversationState {
   // Actions
   fetchConversations: (personaId?: string) => Promise<void>;
   fetchConversationById: (id: string) => Promise<void>;
-  createConversation: (data: { persona_id: string; title?: string }) => Promise<Conversation>;
+  startConversation: (personaId: string, content: string) => Promise<Conversation>;
   sendMessage: (conversationId: string, content: string) => Promise<void>;
   rateMessage: (
     conversationId: string,
@@ -44,8 +52,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     try {
       const response = await conversationApi.getAll(personaId);
       set({ conversations: response.data || [], isLoading: false });
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch conversations';
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to fetch conversations');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -57,27 +65,33 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     try {
       const response = await conversationApi.getById(id);
       set({ currentConversation: response.data || null, isLoading: false });
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch conversation';
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to fetch conversation');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
   },
 
-  // Create new conversation
-  createConversation: async (data: { persona_id: string; title?: string }) => {
-    set({ isLoading: true, error: null });
+  // Create a room from the first message; selecting a persona alone does not
+  // create any database record.
+  startConversation: async (personaId: string, content: string) => {
+    set({ isSending: true, error: null });
     try {
-      const response = await conversationApi.create(data);
-      const newConversation = response.data!;
+      const response = await conversationApi.start({
+        persona_id: personaId,
+        content,
+      });
+      const newConversation = response.data!.conversation;
       set((state) => ({
-        conversations: [...state.conversations, newConversation],
-        isLoading: false,
+        conversations: [newConversation, ...state.conversations],
       }));
+
+      await get().fetchConversationById(newConversation.id);
+      set({ isSending: false });
       return newConversation;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to create conversation';
-      set({ error: errorMessage, isLoading: false });
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to create conversation');
+      set({ error: errorMessage, isSending: false });
       throw error;
     }
   },
@@ -87,15 +101,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set({ isSending: true, error: null });
     try {
       await conversationApi.sendMessage(conversationId, content);
-
-      // Optionally refresh conversation to get AI response
-      // You might want to implement polling or WebSocket here
-      setTimeout(async () => {
-        await get().fetchConversationById(conversationId);
-        set({ isSending: false });
-      }, 2000);
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to send message';
+      // Refresh immediately to show the saved user message and processing
+      // assistant placeholder. The chat page continues polling while needed.
+      await get().fetchConversationById(conversationId);
+      set({ isSending: false });
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to send message');
       set({ error: errorMessage, isSending: false });
       throw error;
     }
@@ -129,8 +140,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           isLoading: false,
         };
       });
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to rate message';
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to rate message');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -147,8 +158,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           state.currentConversation?.id === id ? null : state.currentConversation,
         isLoading: false,
       }));
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to archive conversation';
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to archive conversation');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -165,8 +176,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           state.currentConversation?.id === id ? null : state.currentConversation,
         isLoading: false,
       }));
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to delete conversation';
+    } catch (error: unknown) {
+      const errorMessage = getConversationError(error, 'Failed to delete conversation');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
