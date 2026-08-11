@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // If not authenticated and trying to access protected route
     if (!isAuthenticated && !isPublicRoute) {
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -44,13 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       !pathname.startsWith('/register/organization') &&
       !['/login', '/register', '/'].includes(pathname)
     ) {
-      router.push('/register/organization');
+      router.replace('/register/organization');
       return;
     }
 
     // If authenticated with organization and trying to access organization registration
     if (isAuthenticated && organization && pathname === '/register/organization') {
-      router.push('/dashboard');
+      router.replace('/dashboard');
       return;
     }
   }, [isAuthenticated, organization, pathname, router, isChecking, isLoading]);

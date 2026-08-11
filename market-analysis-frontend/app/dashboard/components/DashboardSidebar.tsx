@@ -12,12 +12,17 @@ type DashboardSidebarProps = {
 const navigationItems = [
   { href: '/dashboard', label: 'Home', icon: 'home', exact: true },
   { href: '/dashboard/dashboards', label: 'Dashboard', icon: 'Dashboard', exact: true },
-  { href: '/dashboard/personas', label: 'Personas', icon: 'smart_toy' },
+  { href: '/dashboard/personas', label: 'Personas', icon: 'people' },
   { href: '/dashboard/knowledge', label: 'Knowledge Base', icon: 'database' },
 ];
 
 export function DashboardSidebar({ isOpen, onClose, onLogout }: DashboardSidebarProps) {
   const pathname = usePathname();
+
+  const logout = () => {
+    onLogout();
+    onClose();
+  }
 
   return (
     <>

@@ -654,9 +654,7 @@ Authorization: Bearer <token>
   "primary_focus_role": "COMPETITIVE_ANALYST | MARKET_RESEARCHER | CUSTOMER_SUCCESS_EXPERT | BUSINESS_STRATEGIST | GENERAL_ASSISTANT",
   "knowledge_base_ids": ["uuid"] (optional),
   "web_search_enabled": true (optional),
-  "external_data_sources_enabled": false (optional),
-  "avatar_url": "string (optional)",
-  "system_prompt": "string (optional)"
+  "external_data_sources_enabled": false (optional)
 }
 ```
 
@@ -701,7 +699,6 @@ Authorization: Bearer <token>
       "name": "string",
       "description": "string",
       "primary_focus_role": "COMPETITIVE_ANALYST",
-      "avatar_url": "string",
       "knowledge_bases": [
         {
           "id": "uuid",
@@ -739,7 +736,6 @@ Authorization: Bearer <token>
     "primary_focus_role": "COMPETITIVE_ANALYST",
     "web_search_enabled": true,
     "external_data_sources_enabled": false,
-    "system_prompt": "string",
     "knowledge_bases": [...],
     "shared_with": [
       {
@@ -771,9 +767,7 @@ Authorization: Bearer <token>
   "description": "string (optional)",
   "primary_focus_role": "COMPETITIVE_ANALYST (optional)",
   "web_search_enabled": true (optional),
-  "external_data_sources_enabled": false (optional),
-  "avatar_url": "string (optional)",
-  "system_prompt": "string (optional)"
+  "external_data_sources_enabled": false (optional)
 }
 ```
 
@@ -952,8 +946,7 @@ Authorization: Bearer <token>
     "id": "uuid",
     "name": "string",
     "description": "string",
-    "primary_focus_role": "COMPETITIVE_ANALYST",
-    "avatar_url": "string"
+    "primary_focus_role": "COMPETITIVE_ANALYST"
   }
 }
 ```
@@ -1130,8 +1123,7 @@ Authorization: Bearer <token>
     "persona_id": "uuid",
     "persona": {
       "id": "uuid",
-      "name": "string",
-      "avatar_url": "string"
+      "name": "string"
     },
     "title": "string",
     "status": "ACTIVE",

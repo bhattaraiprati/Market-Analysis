@@ -4,6 +4,7 @@ import {
   LoginDto,
   AuthResponse,
   UserProfile,
+  User,
   CreateOrganizationDto,
   ApiResponse,
   Organization,
@@ -40,8 +41,28 @@ export const authApi = {
 
   // Get user profile with organization
   getProfile: async () => {
-    const response = await axiosInstance.get<UserProfile>('/auth/profile');
-    return response.data;
+    type ProfileUser = User & { organization?: Organization | null };
+    type ProfilePayload = UserProfile | ProfileUser;
+
+    const response = await axiosInstance.get<
+      ProfilePayload | ApiResponse<ProfilePayload>
+    >('/auth/profile');
+
+    const responseBody = response.data;
+    const profile: ProfilePayload = 'success' in responseBody
+      ? responseBody.data!
+      : responseBody;
+
+    // Support both API shapes:
+    // { user, organization } and { id, name, email, organization }.
+    if ('user' in profile) {
+      return profile as UserProfile;
+    }
+
+    return {
+      user: profile,
+      organization: profile.organization ?? null,
+    } satisfies UserProfile;
   },
 
   // Verify token

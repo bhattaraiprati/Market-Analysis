@@ -46,9 +46,20 @@ export default function LoginPage() {
     try {
       await login({ email, password });
 
-      // Get redirect URL from query params or default to dashboard
-      const redirectUrl = searchParams.get('redirect') || '/dashboard';
-      router.push(redirectUrl);
+      const { organization } = useAuthStore.getState();
+
+      // An authenticated user must create or join an organization before
+      // accessing any dashboard route.
+      if (!organization) {
+        router.replace('/register/organization');
+        return;
+      }
+
+      const requestedRedirect = searchParams.get('redirect');
+      const redirectUrl = requestedRedirect?.startsWith('/dashboard')
+        ? requestedRedirect
+        : '/dashboard';
+      router.replace(redirectUrl);
     } catch (error) {
       // Error is handled by the store
       console.error('Login failed:', error);
@@ -359,7 +370,7 @@ export default function LoginPage() {
           </form>
 
           {/* Social Login / Divider */}
-          <div
+          {/* <div
             className="mt-8 pt-8"
             style={{ borderTop: '1px solid rgba(190, 201, 200, 0.5)' }}
           >
@@ -435,7 +446,7 @@ export default function LoginPage() {
                 GitHub
               </button>
             </div>
-          </div>
+          </div> */}
 
           {/* Registration Link */}
           <div className="mt-8 text-center">

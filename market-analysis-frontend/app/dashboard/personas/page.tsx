@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePersonaStore } from '@/lib/stores/personaStore';
 import { useKnowledgeBaseStore } from '@/lib/stores/knowledgeBaseStore';
 import { CreatePersonaDto, Persona, PersonaRole } from '@/types/api';
-import { Plus, Search, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Search, Share2, Trash2, Users, X } from 'lucide-react';
 
 export default function PersonasPage() {
   const {
@@ -16,6 +16,7 @@ export default function PersonasPage() {
     createPersona,
     updatePersona,
     deletePersona,
+    generatePublicLink,
     assignKnowledgeBase,
     removeKnowledgeBase,
     clearError,
@@ -29,6 +30,8 @@ export default function PersonasPage() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [originalKnowledgeBaseIds, setOriginalKnowledgeBaseIds] = useState<string[]>([]);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<CreatePersonaDto>({
@@ -38,8 +41,6 @@ export default function PersonasPage() {
     knowledge_base_ids: [],
     web_search_enabled: true,
     external_data_sources_enabled: false,
-    avatar_url: '',
-    system_prompt: '',
   });
 
   useEffect(() => {
@@ -53,8 +54,6 @@ export default function PersonasPage() {
       const payload: CreatePersonaDto = {
         ...formData,
         description: formData.description?.trim() || undefined,
-        avatar_url: formData.avatar_url?.trim() || undefined,
-        system_prompt: formData.system_prompt?.trim() || undefined,
       };
 
       if (editingPersonaId) {
@@ -95,6 +94,40 @@ export default function PersonasPage() {
     }
   };
 
+  const handleSharePersona = async (persona: Persona) => {
+    clearError();
+    setShareMessage(null);
+
+    try {
+      const { public_link_url: url } = await generatePublicLink(persona.id);
+
+      if (navigator.share) {
+        await navigator.share({ title: persona.name, text: persona.description, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareMessage(`Share link for ${persona.name} copied to your clipboard.`);
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error('Failed to share persona:', err);
+    }
+  };
+
+  const handleStatusToggle = async (persona: Persona) => {
+    clearError();
+    setUpdatingStatusId(persona.id);
+
+    try {
+      await updatePersona(persona.id, {
+        status: persona.status === 'active' ? 'archived' : 'active',
+      });
+    } catch (err) {
+      console.error('Failed to update persona status:', err);
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
   const resetForm = () => {
     setEditingPersonaId(null);
     setOriginalKnowledgeBaseIds([]);
@@ -105,8 +138,6 @@ export default function PersonasPage() {
       knowledge_base_ids: [],
       web_search_enabled: true,
       external_data_sources_enabled: false,
-      avatar_url: '',
-      system_prompt: '',
     });
   };
 
@@ -121,8 +152,6 @@ export default function PersonasPage() {
       knowledge_base_ids: knowledgeBaseIds,
       web_search_enabled: persona.web_search_enabled,
       external_data_sources_enabled: persona.external_data_sources_enabled,
-      avatar_url: persona.avatar_url ?? '',
-      system_prompt: persona.system_prompt ?? '',
     });
     setShowCreateModal(true);
   };
@@ -180,20 +209,24 @@ export default function PersonasPage() {
       <main className="min-h-screen">
         <div className="p-6 lg:p-10">
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+          <div className="flex flex-col border-b-[1px] pb-4 border-[#bec9c8] md:flex-row md:items-center md:justify-between mb-8 gap-4">
             <div>
-              <h1
+              <div className="flex items-center gap-2 mb-1">
+                <Users color="#005657"  />
+                  <h1
                 style={{
                   fontFamily: 'Hanken Grotesk, sans-serif',
-                  fontSize: '32px',
+                  fontSize: '28px',
                   fontWeight: '700',
                   color: '#005657',
                 }}
               >
-                AI Personas Management
+                Persona Management
               </h1>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3f4948' }}>
-                {filteredPersonas.length} persona{filteredPersonas.length !== 1 ? 's' : ''}
+              </div>
+              
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#3f4948' }}>
+                Create, edit, and manage workspace personas.
               </p>
             </div>
 
@@ -222,7 +255,7 @@ export default function PersonasPage() {
           <div className="mb-6">
             <div className="relative max-w-md">
               <Search
-                size={20}
+                size={18}
                 className="absolute left-3 top-1/2 -translate-y-1/2"
                 style={{ color: '#6f7979' }}
               />
@@ -231,11 +264,11 @@ export default function PersonasPage() {
                 placeholder="Search personas..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-lg outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-lg outline-none transition-all"
                 style={{
                   border: '1px solid #bec9c8',
                   fontFamily: 'Inter, sans-serif',
-                  fontSize: '16px',
+                  fontSize: '13px',
                   color: '#0b1c30',
                   backgroundColor: '#ffffff',
                 }}
@@ -281,6 +314,19 @@ export default function PersonasPage() {
             </div>
           )}
 
+          {shareMessage && (
+            <div
+              role="status"
+              className="mb-6 flex items-center justify-between gap-3 rounded-lg p-4"
+              style={{ backgroundColor: '#e0f2f1', border: '1px solid #1a7070', color: '#005657' }}
+            >
+              <p className="text-sm">{shareMessage}</p>
+              <button onClick={() => setShareMessage(null)} aria-label="Dismiss share message">
+                <X size={18} />
+              </button>
+            </div>
+          )}
+
           {/* Loading State */}
           {isLoading && personas.length === 0 ? (
             <div className="flex justify-center items-center py-20">
@@ -321,11 +367,10 @@ export default function PersonasPage() {
               {filteredPersonas.map((persona) => (
                 <div
                   key={persona.id}
-                  className="bg-white rounded-xl p-6 transition-all cursor-pointer hover:shadow-lg"
+                  className="bg-white rounded-xl p-6 transition-all hover:shadow-lg"
                   style={{
                     border: '1px solid #bec9c8',
                   }}
-                  onClick={() => handleEditPersona(persona)}
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div
@@ -335,26 +380,37 @@ export default function PersonasPage() {
                         color: '#005657',
                       }}
                     >
-                      <span className="material-symbols-outlined text-2xl">smart_toy</span>
+                      <p className="font-bold text-[16px] text-teal-800"> {persona.name.charAt(0)} </p>
+                      {/* <span className="material-symbols-outlined text-2xl">smart_toy</span> */}
                     </div>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedPersonaId(persona.id);
-                        setShowDeleteModal(true);
-                      }}
-                      className="p-2 rounded-lg transition-colors"
-                      style={{ color: '#6f7979' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#ffebee';
-                        e.currentTarget.style.color = '#ba1a1a';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#6f7979';
+                      type="button"
+                      role="switch"
+                      aria-checked={persona.status === 'active'}
+                      aria-label={`${persona.status === 'active' ? 'Deactivate' : 'Activate'} ${persona.name}`}
+                      disabled={updatingStatusId === persona.id}
+                      onClick={() => handleStatusToggle(persona)}
+                      className="inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-xs font-medium transition-opacity disabled:cursor-wait disabled:opacity-60"
+                      style={{
+                        backgroundColor: persona.status === 'active' ? '#dcfce7' : '#f1f5f9',
+                        color: persona.status === 'active' ? '#166534' : '#475569',
                       }}
                     >
-                      <Trash2 size={18} />
+                      <span
+                        aria-hidden="true"
+                        className="relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors"
+                        style={{ backgroundColor: persona.status === 'active' ? '#22c55e' : '#94a3b8' }}
+                      >
+                        <span
+                          className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                          style={{ transform: persona.status === 'active' ? 'translateX(16px)' : 'translateX(0)' }}
+                        />
+                      </span>
+                      {updatingStatusId === persona.id
+                        ? 'Updating...'
+                        : persona.status === 'active'
+                          ? 'Active'
+                          : 'Inactive'}
                     </button>
                   </div>
 
@@ -395,11 +451,41 @@ export default function PersonasPage() {
                       {getRoleLabel(persona.primary_focus_role)}
                     </span>
 
-                    {persona.web_search_enabled && (
-                      <span className="material-symbols-outlined text-sm" style={{ color: '#1a7070' }} title="Web search enabled">
-                        public
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleSharePersona(persona)}
+                        className="rounded-lg p-2 transition-colors hover:bg-teal-50"
+                        style={{ color: '#1a7070' }}
+                        aria-label={`Share ${persona.name}`}
+                        title="Share persona"
+                      >
+                        <Share2 size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditPersona(persona)}
+                        className="rounded-lg p-2 transition-colors hover:bg-teal-50"
+                        style={{ color: '#1a7070' }}
+                        aria-label={`Edit ${persona.name}`}
+                        title="Edit persona"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPersonaId(persona.id);
+                          setShowDeleteModal(true);
+                        }}
+                        className="rounded-lg p-2 transition-colors hover:bg-red-50"
+                        style={{ color: '#ba1a1a' }}
+                        aria-label={`Delete ${persona.name}`}
+                        title="Delete persona"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -544,60 +630,6 @@ export default function PersonasPage() {
                   <option value="CUSTOMER_SUCCESS_EXPERT">Customer Success Expert</option>
                   <option value="BUSINESS_STRATEGIST">Business Strategist</option>
                 </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="avatar_url"
-                  style={{
-                    fontFamily: 'Geist, sans-serif',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#0b1c30',
-                  }}
-                >
-                  Avatar URL
-                </label>
-                <input
-                  id="avatar_url"
-                  type="url"
-                  value={formData.avatar_url ?? ''}
-                  onChange={(e) => setFormData({ ...formData, avatar_url: e.target.value })}
-                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all"
-                  style={{
-                    border: '1px solid #bec9c8',
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: '16px',
-                  }}
-                  placeholder="https://example.com/avatar.png"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="system_prompt"
-                  style={{
-                    fontFamily: 'Geist, sans-serif',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    color: '#0b1c30',
-                  }}
-                >
-                  System Prompt
-                </label>
-                <textarea
-                  id="system_prompt"
-                  value={formData.system_prompt ?? ''}
-                  onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-                  className="w-full mt-2 px-4 py-3 rounded-lg outline-none transition-all resize-y"
-                  style={{
-                    border: '1px solid #bec9c8',
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: '16px',
-                    minHeight: '110px',
-                  }}
-                  placeholder="Define how this persona should behave and respond..."
-                />
               </div>
 
               <fieldset>

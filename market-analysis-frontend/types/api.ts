@@ -8,6 +8,9 @@ export interface User {
   organizationId?: string;
   organizationName?: string;
   organizationStatus?: string;
+  organization?: Organization | null;
+  isVerified?: boolean;
+  status?: string;
   created_at?: string;
 }
 
@@ -135,8 +138,9 @@ export interface Persona {
   primary_focus_role: PersonaRole;
   web_search_enabled: boolean;
   external_data_sources_enabled: boolean;
-  avatar_url?: string;
-  system_prompt?: string;
+  status: PersonaStatus;
+  public_link_enabled?: boolean;
+  public_link_token?: string | null;
   knowledge_bases?: Array<{
     id: string;
     name: string;
@@ -154,8 +158,12 @@ export interface CreatePersonaDto {
   knowledge_base_ids?: string[];
   web_search_enabled?: boolean;
   external_data_sources_enabled?: boolean;
-  avatar_url?: string;
-  system_prompt?: string;
+}
+
+export type PersonaStatus = 'active' | 'draft' | 'archived';
+
+export interface UpdatePersonaDto extends Partial<CreatePersonaDto> {
+  status?: PersonaStatus;
 }
 
 // Conversation Types
@@ -192,7 +200,6 @@ export interface ConversationWithMessages extends Conversation {
   persona: {
     id: string;
     name: string;
-    avatar_url?: string;
   };
   messages: Message[];
 }

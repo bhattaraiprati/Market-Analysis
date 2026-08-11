@@ -62,23 +62,20 @@ export const useAuthStore = create<AuthState>()(
           const response = await authApi.login(data);
 
           // Check if user already has organization from login response
-          const hasOrganization = response.user.organizationId != null;
+          const loginOrganization = response.user.organization ?? null;
+          const hasOrganization = loginOrganization != null || response.user.organizationId != null;
 
           set({
             user: response.user,
-            organization: hasOrganization ? {
+            organization: loginOrganization ?? (hasOrganization ? {
               id: response.user.organizationId!,
               name: response.user.organizationName || '',
               industry: '',
               owner_id: response.user.id,
-            } as Organization : null,
+            } as Organization : null),
             isAuthenticated: true,
             error: null,
           });
-
-          // Ensure token is saved before loading profile
-          // Add a small delay to ensure localStorage write completes
-          await new Promise(resolve => setTimeout(resolve, 100));
 
           // Load full profile including organization details
           try {
@@ -105,6 +102,7 @@ export const useAuthStore = create<AuthState>()(
       // Logout
       logout: () => {
         authApi.logout();
+        localStorage.removeItem('access_token');
         set({
           user: null,
           organization: null,
@@ -120,7 +118,7 @@ export const useAuthStore = create<AuthState>()(
           const profile = await authApi.getProfile();
 
           // Handle organization data from either profile.organization or user object
-          let organization = profile.organization || null;
+          let organization = profile.organization ?? profile.user.organization ?? null;
 
           if (!organization && profile.user.organizationId) {
             organization = {

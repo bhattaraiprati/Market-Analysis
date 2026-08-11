@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Persona, CreatePersonaDto } from '@/types/api';
+import { Persona, CreatePersonaDto, UpdatePersonaDto } from '@/types/api';
 import { personaApi } from '../api/persona';
 
 interface PersonaState {
@@ -13,7 +13,7 @@ interface PersonaState {
   fetchPersonas: () => Promise<void>;
   fetchPersonaById: (id: string) => Promise<Persona>;
   createPersona: (data: CreatePersonaDto) => Promise<Persona>;
-  updatePersona: (id: string, data: Partial<CreatePersonaDto>) => Promise<void>;
+  updatePersona: (id: string, data: UpdatePersonaDto) => Promise<void>;
   deletePersona: (id: string) => Promise<void>;
   sharePersona: (id: string, data: { user_ids: string[]; permission_type: 'VIEW' | 'EDIT' }) => Promise<void>;
   generatePublicLink: (id: string) => Promise<{ public_link_url: string }>;

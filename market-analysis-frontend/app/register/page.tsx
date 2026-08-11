@@ -519,7 +519,7 @@ export default function RegisterPage() {
           </div>
 
           {/* Secondary Navigation (Social/Other) */}
-          <div className="mt-8 flex flex-col items-center gap-4">
+          {/* <div className="mt-8 flex flex-col items-center gap-4">
             <div className="flex items-center gap-4 w-full">
               <div
                 className="h-[1px] flex-grow"
@@ -606,7 +606,7 @@ export default function RegisterPage() {
                 </span>
               </button>
             </div>
-          </div>
+          </div> */}
 
           {/* Back to main site link */}
           <div className="mt-12 text-center">

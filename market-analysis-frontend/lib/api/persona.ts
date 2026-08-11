@@ -2,6 +2,7 @@ import { axiosInstance } from './client';
 import {
   Persona,
   CreatePersonaDto,
+  UpdatePersonaDto,
   ApiResponse,
 } from '@/types/api';
 
@@ -25,7 +26,7 @@ export const personaApi = {
   },
 
   // Update persona
-  update: async (id: string, data: Partial<CreatePersonaDto>) => {
+  update: async (id: string, data: UpdatePersonaDto) => {
     const response = await axiosInstance.patch<ApiResponse<Persona>>(
       `/personas/${id}`,
       data

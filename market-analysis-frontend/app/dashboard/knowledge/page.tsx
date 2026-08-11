@@ -168,9 +168,9 @@ export default function KnowledgeBasePage() {
                 className="uppercase tracking-widest"
                 style={{
                   fontFamily: 'Geist, sans-serif',
-                  fontSize: '12px',
+                  fontSize: '14px',
                   lineHeight: '14px',
-                  fontWeight: '500',
+                  fontWeight: '700',
                   color: '#005657'
                 }}
               >
@@ -246,9 +246,9 @@ export default function KnowledgeBasePage() {
               className="uppercase tracking-widest"
               style={{
                 fontFamily: 'Geist, sans-serif',
-                fontSize: '12px',
+                fontSize: '14px',
                 lineHeight: '14px',
-                fontWeight: '500',
+                fontWeight: '700',
                 color: '#a4f1f0'
               }}
             >
@@ -549,7 +549,7 @@ export default function KnowledgeBasePage() {
 
         {/* Featured Resources */}
         <div className="mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-          <div
+          {/* <div
             className="lg:col-span-2 p-6 lg:p-8 rounded-xl relative overflow-hidden group"
             style={{
               backgroundColor: '#ffffff',
@@ -610,7 +610,7 @@ export default function KnowledgeBasePage() {
                 auto_awesome
               </span>
             </div>
-          </div>
+          </div> */}
 
           <div
             className="p-6 lg:p-8 rounded-xl flex flex-col justify-center items-center text-center"
