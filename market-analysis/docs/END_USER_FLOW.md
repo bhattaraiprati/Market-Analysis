@@ -83,7 +83,6 @@ This document describes the complete end-user journey through the AI Persona-bas
    - **Basic Information**:
      - Persona name (e.g., "Market Analysis AI", "Sales Assistant")
      - Description and purpose
-     - Avatar/icon selection
    - **Role & Specialization**:
      - Select primary role (Sales, Marketing, Finance, Operations, etc.)
      - Define specific focus areas
@@ -147,7 +146,7 @@ This document describes the complete end-user journey through the AI Persona-bas
      - Shared with Me (accessible personas)
      - Organization Personas (company-wide)
 4. Conversation interface loads with:
-   - Persona avatar and name
+   - Persona name
    - Knowledge bases assigned (displayed as tags)
    - Available capabilities (web search, data analysis icons)
 

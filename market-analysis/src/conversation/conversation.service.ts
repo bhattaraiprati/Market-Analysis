@@ -141,7 +141,7 @@ export class ConversationService {
           {
             model: Persona,
             as: 'persona',
-            attributes: ['id', 'name', 'avatar_url', 'primary_focus_role'],
+            attributes: ['id', 'name', 'primary_focus_role'],
           },
         ],
         order: [['last_message_at', 'DESC']],
@@ -173,7 +173,7 @@ export class ConversationService {
           {
             model: Persona,
             as: 'persona',
-            attributes: ['id', 'name', 'avatar_url', 'primary_focus_role', 'description'],
+            attributes: ['id', 'name', 'primary_focus_role', 'description'],
           },
           {
             model: Message,
@@ -321,7 +321,6 @@ export class ConversationService {
         name: persona.name,
         description: persona.description,
         primary_focus_role: persona.primary_focus_role,
-        system_prompt: persona.system_prompt,
         web_search_enabled: persona.web_search_enabled,
         knowledgeBaseIds: persona.knowledgeBases?.map((kb: any) => kb.id) || [],
       };

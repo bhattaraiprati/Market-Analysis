@@ -20,7 +20,6 @@ export interface ConversationWebResearchRequest {
     name?: string;
     primary_focus_role?: string;
     description?: string;
-    system_prompt?: string;
   };
   conversationHistory?: Array<{ role?: string; content?: string }>;
 }

@@ -138,7 +138,6 @@ The persona is selected using its ID and organization ID. Its associated knowled
 | `name` | Included in the final system prompt. |
 | `description` | Included in the final system prompt, truncated to 1,000 characters. |
 | `primary_focus_role` | Defines the assistant's role. |
-| `system_prompt` | Custom persona instructions, truncated to 2,000 characters. |
 | `web_search_enabled` | Controls whether the router may select web retrieval. |
 | associated knowledge-base IDs | Controls whether vector retrieval is available and limits Pinecone results. |
 
@@ -286,7 +285,6 @@ The system prompt includes:
 - persona name;
 - persona role;
 - persona description;
-- custom persona instructions, if configured;
 - whether web and knowledge-base capabilities are available;
 - routed query type;
 - which sources the router requested;
@@ -383,4 +381,3 @@ The API can therefore return a mixture of completed, processing, and failed mess
 - `src/knowledge-base/services/pinecone.service.ts`
 - `src/llm/llm.service.ts`
 - `src/auth/strategies/jwt.strategy.ts`
-

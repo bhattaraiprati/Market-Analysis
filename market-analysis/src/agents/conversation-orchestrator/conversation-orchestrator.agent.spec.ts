@@ -89,7 +89,6 @@ describe('ConversationOrchestratorAgent grounding', () => {
         personaConfig: {
           name: 'Arjun',
           primary_focus_role: 'SALES',
-          system_prompt: 'Apply FIELD qualification exactly as documented.',
           web_search_enabled: false,
           knowledgeBaseIds: ['company-kb', 'sales-kb'],
         },

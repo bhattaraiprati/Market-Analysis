@@ -7,7 +7,6 @@ import {
   IsUUID,
   MinLength,
   MaxLength,
-  IsUrl,
 } from 'class-validator';
 import { PersonaRole } from '../../models/persona.model';
 
@@ -37,13 +36,4 @@ export class CreatePersonaDto {
   @IsOptional()
   @IsBoolean()
   external_data_sources_enabled?: boolean;
-
-  @IsOptional()
-  @IsUrl()
-  @MaxLength(500)
-  avatar_url?: string;
-
-  @IsOptional()
-  @IsString()
-  system_prompt?: string;
 }

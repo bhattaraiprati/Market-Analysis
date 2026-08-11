@@ -47,8 +47,7 @@ Content-Type: application/json
     "kb-uuid-2"
   ],
   "web_search_enabled": true,
-  "external_data_sources_enabled": false,
-  "system_prompt": "You are a sales expert helping users close deals and qualify leads."
+  "external_data_sources_enabled": false
 }
 ```
 
@@ -62,8 +61,6 @@ Content-Type: application/json
 | `knowledge_base_ids` | array | ❌ | Array of knowledge base UUIDs to assign |
 | `web_search_enabled` | boolean | ❌ | Enable web search (default: `true`) |
 | `external_data_sources_enabled` | boolean | ❌ | Enable external data access (default: `false`) |
-| `avatar_url` | string | ❌ | Avatar image URL |
-| `system_prompt` | string | ❌ | Custom system prompt for the AI |
 
 ### Response (201 Created)
 ```json
@@ -206,7 +203,6 @@ Authorization: Bearer YOUR_JWT_TOKEN
       "temperature": 0.7,
       "max_tokens": 4000
     },
-    "system_prompt": "You are a sales expert...",
     "status": "active",
     "visibility": "private",
     "total_conversations": 15,

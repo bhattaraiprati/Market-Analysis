@@ -407,10 +407,6 @@ PERSONA DESCRIPTION: ${this.truncate(personaConfig?.description || 'A helpful AI
 
 `;
 
-    if (personaConfig?.system_prompt) {
-      prompt += `CUSTOM INSTRUCTIONS:\n${this.truncate(personaConfig.system_prompt, 2000)}\n\n`;
-    }
-
     prompt += `YOUR CAPABILITIES:
 - Web Search: ${personaConfig?.web_search_enabled ? 'ENABLED' : 'DISABLED'}
 - Knowledge Base Access: ${personaConfig?.knowledgeBaseIds?.length > 0 ? 'AVAILABLE' : 'NOT AVAILABLE'}

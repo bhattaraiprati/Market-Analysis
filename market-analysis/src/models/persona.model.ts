@@ -75,9 +75,6 @@ export class Persona extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare description: string;
 
-  @Column({ type: DataType.STRING(500), allowNull: true })
-  declare avatar_url: string;
-
   // Role & configuration
   @Column({
     type: DataType.ENUM(...Object.values(PersonaRole)),
@@ -101,10 +98,6 @@ export class Persona extends Model {
 
   @Column({ type: DataType.JSONB, allowNull: true, defaultValue: {} })
   declare model_parameters: Record<string, any>;
-
-  // System prompt
-  @Column({ type: DataType.TEXT, allowNull: true })
-  declare system_prompt: string;
 
   // Status & visibility
   @Default(PersonaStatus.ACTIVE)

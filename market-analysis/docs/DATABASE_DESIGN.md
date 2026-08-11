@@ -439,7 +439,6 @@ CREATE TABLE personas (
     -- Basic info
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    avatar_url VARCHAR(500),
     
     -- Role & specialization
     role VARCHAR(100) NOT NULL,
@@ -460,7 +459,6 @@ CREATE TABLE personas (
     model_parameters JSONB DEFAULT '{"temperature": 0.7, "max_tokens": 4000}',
     
     -- Context configuration
-    system_prompt TEXT,
     context_window_size INTEGER DEFAULT 200000,
     max_knowledge_chunks INTEGER DEFAULT 20,
     confidence_threshold DECIMAL(3,2) DEFAULT 0.70,
