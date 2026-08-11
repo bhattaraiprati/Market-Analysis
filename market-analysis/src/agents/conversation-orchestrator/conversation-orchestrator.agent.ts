@@ -36,6 +36,8 @@ export interface ConversationResult {
     knowledgeBase?: {
       used: boolean;
       knowledgeBaseIds: string[];
+      queries?: string[];
+      files?: string[];
       chunksRetrieved: number;
       relevanceScores: number[];
       context?: string;
@@ -88,6 +90,7 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
           conversationHistory,
         },
       });
+      console.log('Query router result:', routerResult);
 
       if (!routerResult.success || !routerResult.data) {
         throw new Error('Query router failed');
@@ -158,29 +161,79 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
         }
       }
 
-      // 2b. Knowledge Base Search (if needed and available)
-      if (
-        intent.requiresKnowledgeBase &&
+      // A configured persona should use its KB for every substantive request.
+      // This is intentionally enforced here instead of trusting the probabilistic
+      // router alone: skipping retrieval is a much more expensive failure than
+      // retrieving a few extra scoped chunks.
+      const shouldUseKnowledgeBase =
         personaConfig?.knowledgeBaseIds?.length > 0 &&
-        knowledgeBaseService
-      ) {
+        knowledgeBaseService &&
+        (intent.requiresKnowledgeBase || !this.isSmallTalk(userQuery));
+
+      if (shouldUseKnowledgeBase) {
+        intent.requiresKnowledgeBase = true;
+      }
+
+      console.log(`Should use knowledge base: ${shouldUseKnowledgeBase}, requiresKnowledgeBase=${intent.requiresKnowledgeBase}`);
+
+      // 2b. Knowledge Base Search (if needed and available)
+      if (shouldUseKnowledgeBase) {
         this.logger.log('📚 Step 2b: Querying knowledge base...');
+        console.log(`📚 Step 2b: Querying knowledge base...`);
+
+        console.log(`Persona KB IDs: ${personaConfig.knowledgeBaseIds}`);
+
         try {
-          const kbQuery = intent.knowledgeBaseQuery || userQuery;
-          const kbResults = await knowledgeBaseService.query(
-            kbQuery,
-            context.organizationId,
-            {
-              knowledgeBaseIds: personaConfig.knowledgeBaseIds,
-              topK: 5,
-              minScore: 0.7,
-            },
+          sourcesUsed.knowledgeBase = {
+            used: false,
+            knowledgeBaseIds: personaConfig.knowledgeBaseIds,
+            files: [],
+            chunksRetrieved: 0,
+            relevanceScores: [],
+            context:
+              'KB RETRIEVAL STATUS: Retrieval failed. Do not supply organization-specific details from model memory; disclose that the knowledge base could not be verified.',
+          };
+          knowledgeBaseContext = sourcesUsed.knowledgeBase.context!;
+          const kbQueries = this.buildKnowledgeBaseQueries(
+            userQuery,
+            intent,
+            personaConfig,
           );
+          const queryResultSets = await Promise.all(
+            kbQueries.map((query) =>
+              knowledgeBaseService.query(query, context.organizationId, {
+                knowledgeBaseIds: personaConfig.knowledgeBaseIds,
+                topK: 8,
+                minScore: 0.55,
+              }),
+            ),
+          );
+          sourcesUsed.knowledgeBase = {
+            used: true,
+            knowledgeBaseIds: personaConfig.knowledgeBaseIds,
+            queries: kbQueries,
+            files: [],
+            chunksRetrieved: 0,
+            relevanceScores: [],
+            context:
+              'KB RETRIEVAL STATUS: No relevant evidence was retrieved. Do not supply organization-specific details from model memory; state that the available evidence is insufficient.',
+          };
+          knowledgeBaseContext = sourcesUsed.knowledgeBase.context!;
+          const kbResults = this.mergeKnowledgeBaseResults(queryResultSets, 10);
 
           if (kbResults && kbResults.length > 0) {
+            const files = [
+              ...new Set(
+                kbResults
+                  .map((result: any) => result.metadata?.file_name)
+                  .filter(Boolean),
+              ),
+            ] as string[];
             sourcesUsed.knowledgeBase = {
               used: true,
               knowledgeBaseIds: personaConfig.knowledgeBaseIds,
+              queries: kbQueries,
+              files,
               chunksRetrieved: kbResults.length,
               relevanceScores: kbResults.map((r: any) => r.score),
               context: this.formatKnowledgeBaseContext(kbResults),
@@ -197,7 +250,7 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
 
       // Step 3: Generate response using persona and retrieved data
       this.logger.log('💬 Step 3: Generating response...');
-      const response = await this.generateResponse(
+      const draftResponse = await this.generateResponse(
         userQuery,
         personaConfig,
         conversationHistory,
@@ -205,6 +258,15 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
         knowledgeBaseContext,
         intent,
         context.companyContext,
+      );
+      const kbWasEligible = shouldUseKnowledgeBase;
+      const response = await this.reviewGroundedResponse(
+        draftResponse,
+        userQuery,
+        personaConfig,
+        knowledgeBaseContext,
+        context.companyContext,
+        kbWasEligible,
       );
       this.logger.log(
         `Final response model: ${response.model}, finishReason=${response.finishReason || 'unknown'}, totalTokens=${response.usage.totalTokens}`,
@@ -248,15 +310,92 @@ export class ConversationOrchestratorAgent extends BaseAgent<ConversationResult>
       userQuery,
       conversationHistory,
       this.truncate(webSearchContext, 8000),
-      this.truncate(knowledgeBaseContext, 3500),
-      this.truncate(companyContext, 3500),
+      this.truncateKnowledgeBaseContext(knowledgeBaseContext, 10500),
+      this.truncate(companyContext, 2500),
     );
 
     this.logger.log(
-      `Final prompt size: system=${systemPrompt.length} chars, user=${userPrompt.length} chars, web=${Math.min(webSearchContext.length, 8000)} chars, kb=${Math.min(knowledgeBaseContext.length, 3500)} chars`,
+      `Final prompt size: system=${systemPrompt.length} chars, user=${userPrompt.length} chars, web=${Math.min(webSearchContext.length, 8000)} chars, kb=${Math.min(knowledgeBaseContext.length, 10500)} chars`,
     );
 
-    return this.callLlm(systemPrompt, userPrompt, 4000, 0.7);
+    // Grounded responses favor the larger analysis model and deterministic
+    // decoding. This materially reduces plausible-but-unsupported completions.
+    return this.callLlm(
+      systemPrompt,
+      userPrompt,
+      knowledgeBaseContext ? 2200 : 3000,
+      knowledgeBaseContext ? 0.15 : 0.4,
+      knowledgeBaseContext ? 'analysis' : 'conversation',
+    );
+  }
+
+  private async reviewGroundedResponse(
+    draft: LlmGenerateResult,
+    userQuery: string,
+    personaConfig: any,
+    knowledgeBaseContext: string,
+    companyContext: string,
+    kbWasEligible: boolean,
+  ): Promise<LlmGenerateResult> {
+    if (!kbWasEligible) return draft;
+    if (!knowledgeBaseContext.includes('<KB_SOURCE')) return draft;
+
+    const systemPrompt = `You are the final evidence auditor for a knowledge-grounded AI response.
+
+Your only output is the corrected final answer—never output a critique, score, preamble, or JSON.
+
+MANDATORY AUDIT:
+- Treat facts explicitly supplied in the current user request as case facts
+- Treat the supplied organization profile and KB excerpts as the only evidence for organization-specific claims
+- Delete or correct every unsupported product plan, feature, integration, certification, customer result, percentage, price, policy, approval, timeline, location, named vendor, and commitment
+- Preserve named frameworks exactly. Never rename elements, add elements, or substitute a framework from model memory
+- Label reasonable inferences as inferences and missing decision information as unknown
+- Never turn a company target, illustrative scenario, or response target into a proven outcome or guarantee
+- Never infer the prospect's location, systems, budget, requirements, authority, or intent
+- Cite material internal claims as [KB: exact-filename.pdf]
+- Keep useful structure, but correctness and traceability take priority
+
+PERSONA ROLE: ${personaConfig?.primary_focus_role || 'GENERAL_ASSISTANT'}
+PERSONA NAME: ${personaConfig?.name || 'AI Assistant'}`;
+
+    const userPrompt = `CURRENT USER REQUEST:
+${this.truncate(userQuery, 1800)}
+
+ORGANIZATION PROFILE:
+${this.truncate(companyContext, 1200)}
+
+RETRIEVED KB EVIDENCE:
+${this.truncateKnowledgeBaseContext(knowledgeBaseContext, 6500)}
+
+DRAFT TO AUDIT AND, WHEN NECESSARY, REWRITE:
+${this.truncate(draft.content, 5000)}
+
+Return only the final grounded answer.`;
+
+    try {
+      const reviewed = await this.callLlm(
+        systemPrompt,
+        userPrompt,
+        1800,
+        0.05,
+        'analysis',
+      );
+      return {
+        ...reviewed,
+        usage: {
+          promptTokens: draft.usage.promptTokens + reviewed.usage.promptTokens,
+          completionTokens:
+            draft.usage.completionTokens + reviewed.usage.completionTokens,
+          totalTokens: draft.usage.totalTokens + reviewed.usage.totalTokens,
+        },
+      };
+    } catch (error) {
+      this.logger.warn(
+        'Grounding review failed; returning the already-grounded draft response',
+        error,
+      );
+      return draft;
+    }
   }
 
   private buildSystemPrompt(personaConfig: any, intent: QueryIntent): string {
@@ -281,6 +420,16 @@ CURRENT QUERY CONTEXT:
 - Uses Web Search: ${intent.requiresWebSearch}
 - Uses Knowledge Base: ${intent.requiresKnowledgeBase}
 
+GROUNDING CONTRACT (MANDATORY):
+1. Treat the current user message as trusted case input, and the supplied organization profile and retrieved sources as the only evidence for organization-specific claims
+2. Never use general model memory to add a product plan, feature, integration, certification, customer result, percentage, price, location, policy, approval, timeline, or named vendor that is absent from the supplied evidence
+3. Never expand, rename, or redefine a named framework or acronym unless its exact definition appears in the evidence. Preserve the documented definition and number of framework elements exactly
+4. Distinguish clearly between: SUPPORTED FACT (direct evidence), REASONABLE INFERENCE (derived and labeled), and UNKNOWN (missing evidence). Never turn an inference or target into a proven result or guarantee
+5. Do not infer a prospect's location, systems, requirements, budget, authority, or intent from the organization profile or from industry stereotypes
+6. When sources conflict, disclose the conflict and follow any source-priority rule stated in the knowledge base. Do not silently combine conflicting facts
+7. Before answering, silently audit every proper noun, number, plan name, framework element, integration, outcome, and commitment. Remove or label anything not supported
+8. Cite material internal claims inline as [KB: exact-filename.pdf]. End KB-grounded answers with a short "Evidence gaps" section when information needed for the decision is missing
+
 RESPONSE GUIDELINES:
 1. Web retrieval has already been performed by the application. Never call browser.search or any other tool; answer only from the supplied context
 2. Respond in character according to your persona role and description
@@ -288,7 +437,7 @@ RESPONSE GUIDELINES:
 4. If knowledge base data is provided, reference the internal documents
 5. Be conversational and helpful
 6. If you cannot answer due to missing data or permissions, explain clearly
-7. Do not make up information - only use provided context
+7. Do not make up information - only use provided context and facts explicitly supplied by the user
 8. Keep responses concise but comprehensive
 
 `;
@@ -322,7 +471,7 @@ RESPONSE GUIDELINES:
 
     // Add knowledge base context
     if (knowledgeBaseContext) {
-      prompt += `KNOWLEDGE BASE CONTEXT (from your uploaded documents):\n${knowledgeBaseContext}\n\n`;
+      prompt += `KNOWLEDGE BASE EVIDENCE (authoritative excerpts from attached documents; source identifiers must be preserved in citations):\n${knowledgeBaseContext}\n\n`;
     }
 
     if (companyContext) {
@@ -332,7 +481,7 @@ RESPONSE GUIDELINES:
     // Add current user query
     prompt += `ANSWER REQUEST (all required retrieval is already complete):\n${userQuery}\n\n`;
 
-    prompt += `Use the organization profile when the user says "our", "we", "us", "our company", or "our competitors". Do not ask for company details already present in that profile. If web results are available, base current claims on those results and include source links. Produce the final answer now without calling or requesting any tool.`;
+    prompt += `Use the organization profile when the user says "our", "we", "us", "our company", or "our competitors". Do not ask for company details already present in that profile. Treat facts in the current user request as case facts, not as proof of unstated requirements. If web results are available, base current claims on those results and include source links. For KB-grounded answers, cite the exact KB filename beside material internal claims. If evidence is absent, say "unknown from the available evidence" and request the missing information. Produce the final answer now without calling or requesting any tool.`;
 
     return prompt;
   }
@@ -378,12 +527,78 @@ RESPONSE GUIDELINES:
   private formatKnowledgeBaseContext(results: any[]): string {
     let context = '';
     results.forEach((result: any, idx: number) => {
-      context += `[Document ${idx + 1}] ${result.metadata?.file_name || 'Untitled'}\n`;
+      context += `<KB_SOURCE id="${idx + 1}" file="${result.metadata?.file_name || 'Untitled'}">\n`;
       context += `Relevance Score: ${(result.score * 100).toFixed(1)}%\n`;
       context += `Content: ${result.metadata?.original_text || ''}\n`;
-      context += `\n`;
+      context += `</KB_SOURCE>\n\n`;
     });
     return context;
+  }
+
+  private buildKnowledgeBaseQueries(
+    userQuery: string,
+    intent: QueryIntent,
+    personaConfig: any,
+  ): string[] {
+    const queries = [
+      userQuery.trim(),
+      intent.knowledgeBaseQuery?.trim(),
+      `${personaConfig?.primary_focus_role || 'persona'} exact internal framework definitions policies constraints thresholds required evidence and decision criteria for: ${userQuery}`,
+    ].filter((query): query is string => Boolean(query));
+
+    return [...new Set(queries)];
+  }
+
+  private mergeKnowledgeBaseResults(resultSets: any[][], limit: number): any[] {
+    const byId = new Map<string, any>();
+    resultSets.flat().forEach((result: any) => {
+      const key =
+        result.id ||
+        `${result.metadata?.file_id}:${result.metadata?.chunk_index}`;
+      const existing = byId.get(key);
+      if (!existing || Number(result.score) > Number(existing.score)) {
+        byId.set(key, result);
+      }
+    });
+
+    const ranked = [...byId.values()].sort(
+      (left, right) => Number(right.score) - Number(left.score),
+    );
+    const selected: any[] = [];
+    const selectedIds = new Set<string>();
+    const seenFiles = new Set<string>();
+
+    // First preserve source diversity so one long document cannot crowd every
+    // persona-specific playbook out of the prompt.
+    for (const result of ranked) {
+      const file = result.metadata?.file_name || 'Untitled';
+      const id =
+        result.id ||
+        `${result.metadata?.file_id}:${result.metadata?.chunk_index}`;
+      if (seenFiles.has(file)) continue;
+      selected.push(result);
+      selectedIds.add(id);
+      seenFiles.add(file);
+      if (selected.length >= limit) return selected;
+    }
+
+    for (const result of ranked) {
+      const id =
+        result.id ||
+        `${result.metadata?.file_id}:${result.metadata?.chunk_index}`;
+      if (selectedIds.has(id)) continue;
+      selected.push(result);
+      selectedIds.add(id);
+      if (selected.length >= limit) break;
+    }
+
+    return selected;
+  }
+
+  private isSmallTalk(userQuery: string): boolean {
+    return /^(hi|hello|hey|thanks|thank you|good morning|good afternoon|good evening)[!.?\s]*$/i.test(
+      userQuery.trim(),
+    );
   }
 
   private summarizeWebResults(research: ConversationWebResearchResult): string {
@@ -395,14 +610,29 @@ RESPONSE GUIDELINES:
     return `${value.slice(0, maxCharacters)}\n[Context truncated to fit the model request budget]`;
   }
 
+  private truncateKnowledgeBaseContext(
+    value: string,
+    maxCharacters: number,
+  ): string {
+    if (!value || value.length <= maxCharacters) return value;
+    const candidate = value.slice(0, maxCharacters);
+    const closingTag = '</KB_SOURCE>';
+    const lastCompleteSource = candidate.lastIndexOf(closingTag);
+    if (lastCompleteSource >= 0) {
+      return `${candidate.slice(0, lastCompleteSource + closingTag.length)}\n[Additional KB sources omitted to fit the model request budget]`;
+    }
+    return this.truncate(value, maxCharacters);
+  }
+
   private async callLlm(
     systemPrompt: string,
     userPrompt: string,
     maxTokens = 4000,
     temperature = 0.7,
+    task: 'conversation' | 'analysis' = 'conversation',
   ): Promise<LlmGenerateResult> {
     return this.llmService.generateText({
-      task: 'conversation',
+      task,
       systemPrompt,
       userPrompt,
       maxTokens,

@@ -9,7 +9,9 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/sequelize';
 import { User } from '../../models/user.model';
-import { UserStatus } from '../../common/enums';
+import { Organization } from '../../models/organization.model';
+import { OrganizationMember } from '../../models/organizationMember.model';
+import { OrgMemberStatus, UserStatus } from '../../common/enums';
 
 export interface JwtPayload {
   sub: string;
@@ -28,6 +30,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly configService: ConfigService,
     @InjectModel(User) private readonly userModel: typeof User,
+    @InjectModel(Organization)
+    private readonly organizationModel: typeof Organization,
+    @InjectModel(OrganizationMember)
+    private readonly organizationMemberModel: typeof OrganizationMember,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -54,13 +60,62 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Email not verified');
     }
 
+    const organizationId = await this.resolveOrganizationId(
+      user.id,
+      payload.organizationId,
+    );
+
     return {
       userId: payload.sub,
       email: payload.email,
       name: payload.name,
       role: payload.role,
-      organizationId: payload.organizationId,
+      organizationId,
     };
+  }
+
+  /**
+   * Resolve organization membership from the database instead of trusting a
+   * potentially stale JWT claim. This also makes tokens issued before company
+   * registration usable immediately after the organization is created.
+   */
+  private async resolveOrganizationId(
+    userId: string,
+    tokenOrganizationId: string | null,
+  ): Promise<string | null> {
+    if (tokenOrganizationId) {
+      const [ownedOrganization, activeMembership] = await Promise.all([
+        this.organizationModel.findOne({
+          where: { id: tokenOrganizationId, owner_id: userId },
+          attributes: ['id'],
+        }),
+        this.organizationMemberModel.findOne({
+          where: {
+            user_id: userId,
+            organization_id: tokenOrganizationId,
+            status: OrgMemberStatus.ACTIVE,
+          },
+          attributes: ['organization_id'],
+        }),
+      ]);
+
+      if (ownedOrganization || activeMembership) return tokenOrganizationId;
+    }
+
+    const ownedOrganization = await this.organizationModel.findOne({
+      where: { owner_id: userId },
+      attributes: ['id'],
+      order: [['created_at', 'ASC']],
+    });
+    if (ownedOrganization) return ownedOrganization.id;
+
+    const activeMembership = await this.organizationMemberModel.findOne({
+      where: { user_id: userId, status: OrgMemberStatus.ACTIVE },
+      attributes: ['organization_id'],
+      order: [['created_at', 'ASC']],
+    });
+
+    return activeMembership?.organization_id ?? null;
   }
 
   private async findUserWithTransientRetry(

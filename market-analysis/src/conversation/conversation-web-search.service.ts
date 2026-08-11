@@ -46,6 +46,25 @@ interface FirecrawlDocument {
   };
 }
 
+interface WebSearchPlan {
+  queries: string[];
+  location?: string;
+  timeFilter?: string;
+}
+
+interface SearchCandidate {
+  document: FirecrawlDocument;
+  queryIndex: number;
+  resultIndex: number;
+}
+
+interface PrimarySite {
+  siteUrl: string;
+  pageUrl: string;
+  document: FirecrawlDocument;
+  relevanceScore: number;
+}
+
 @Injectable()
 export class ConversationWebSearchService {
   private readonly logger = new Logger(ConversationWebSearchService.name);
@@ -58,15 +77,13 @@ export class ConversationWebSearchService {
     configService: ConfigService,
     private readonly llmService: LlmService,
   ) {
-    const apiKey =
-      configService.get<string>('FIRECRAWL_API_KEY') ||
-      configService.get<string>('Firecrawl_API_KEY');
+    const apiKey = configService.get<string>('Firecrawl_API_KEY');
 
     if (apiKey) {
       this.firecrawl = new FirecrawlApp({ apiKey });
     } else {
       this.logger.warn(
-        'FIRECRAWL_API_KEY is not configured; conversation web search is unavailable',
+        'Firecrawl_API_KEY is not configured; conversation web search is unavailable',
       );
     }
     this.firecrawlMinIntervalMs = this.positiveInteger(
@@ -82,8 +99,8 @@ export class ConversationWebSearchService {
   }
 
   /**
-   * Persona-aware web research: generate queries, select five independent sites,
-   * then scrape each homepage and up to five useful internal pages.
+   * Persona-aware web research: generate queries, rank exact result pages from
+   * independent sites, then scrape only query-relevant pages.
    */
   async research(
     request: ConversationWebResearchRequest,
@@ -95,14 +112,20 @@ export class ConversationWebSearchService {
       throw new Error('A non-empty user query is required for web search');
     }
 
-    const queries = await this.generateQueries(request);
+    const searchPlan = await this.generateSearchPlan(request);
+    const queries = searchPlan.queries;
     this.logger.log(
       `Generated ${queries.length} web queries: ${queries.join(' | ')}`,
     );
-    const candidates = await this.runSearches(queries);
-    const primarySites = this.selectPrimarySites(candidates, 5);
+    const candidates = await this.runSearches(queries, searchPlan);
+    const primarySites = this.selectPrimarySites(
+      candidates,
+      request,
+      queries,
+      5,
+    );
     this.logger.log(
-      `Selected ${primarySites.length} primary sites: ${primarySites.map((site) => site.url).join(', ')}`,
+      `Selected ${primarySites.length} relevant result pages: ${primarySites.map((site) => `${site.pageUrl} (${site.relevanceScore.toFixed(1)})`).join(', ')}`,
     );
 
     if (primarySites.length === 0) {
@@ -124,27 +147,27 @@ export class ConversationWebSearchService {
       } else {
         failures += 1;
         this.logger.warn(
-          `Failed to research ${primarySites[index].url}: ${this.errorMessage(result.reason)}`,
+          `Failed to research ${primarySites[index].pageUrl}: ${this.errorMessage(result.reason)}`,
         );
       }
     });
 
     return {
       queries,
-      sites: primarySites.map((site) => site.url),
+      sites: this.uniqueStrings(results.map((result) => result.siteUrl)),
       results,
       failures,
     };
   }
 
-  private async generateQueries(
+  private async generateSearchPlan(
     request: ConversationWebResearchRequest,
-  ): Promise<string[]> {
+  ): Promise<WebSearchPlan> {
     const recentContext = (request.conversationHistory || [])
       .slice(-4)
       .map((message) => `${message.role || 'user'}: ${message.content || ''}`)
       .join('\n');
-    const prompt = `Generate 3 precise, complementary web search queries for the request below.
+    const prompt = `Create a focused web-search plan for the request below.
 
 USER REQUEST: ${request.userQuery}
 ROUTER QUERY: ${request.optimizedQuery || 'Not provided'}
@@ -153,51 +176,101 @@ PERSONA DESCRIPTION: ${request.persona?.description || 'Not provided'}
 ORGANIZATION CONTEXT: ${request.companyContext || 'Not provided'}
 RECENT CONVERSATION: ${recentContext || 'None'}
 
-Make the queries appropriate for the persona's department and the user's actual goal. Include relevant organization names, location, date, product, market, technical, financial, HR, or operational terms when present. Do not broaden the request. Return only a JSON array of 3 strings.`;
+Generate exactly 3 complementary queries:
+1. A direct query using the named organization, subject, geography, and date.
+2. A primary-source query for an official regulator, government body, company, filing, or original report when applicable.
+3. An independent comparison or market-evidence query.
+
+Do not broaden the request. Resolve words such as "our" using ORGANIZATION CONTEXT. Return only JSON in this shape:
+{"queries":["query 1","query 2","query 3"],"location":"country or city, country, or null"}`;
 
     try {
       const response = await this.llmService.generateText({
         task: 'search',
         systemPrompt:
-          'You create grounded web-search queries. Return only a valid JSON array of strings.',
+          'You create grounded web-search plans. Return only one valid JSON object.',
         userPrompt: prompt,
         temperature: 0.2,
         maxTokens: 500,
       });
       this.logger.log(`Search-query model used: ${response.model}`);
-      const match = response.content.match(/\[[\s\S]*\]/);
-      const parsed: unknown = match ? JSON.parse(match[0]) : [];
-      const generated = Array.isArray(parsed)
-        ? parsed.filter(
-            (query): query is string =>
-              typeof query === 'string' && query.trim().length > 2,
-          )
-        : [];
-      return this.uniqueStrings([
+      const objectMatch = response.content.match(/\{[\s\S]*\}/);
+      const arrayMatch = response.content.match(/\[[\s\S]*\]/);
+      const parsed: unknown = objectMatch
+        ? JSON.parse(objectMatch[0])
+        : arrayMatch
+          ? JSON.parse(arrayMatch[0])
+          : {};
+      const rawQueries = Array.isArray(parsed)
+        ? parsed
+        : this.isRecord(parsed) && Array.isArray(parsed.queries)
+          ? parsed.queries
+          : [];
+      const generated = rawQueries.filter(
+        (query): query is string =>
+          typeof query === 'string' && query.trim().length > 2,
+      );
+      const queries = this.uniqueStrings([
         request.optimizedQuery || '',
         ...generated,
       ]).slice(0, 4);
+      const plannedLocation =
+        this.isRecord(parsed) && typeof parsed.location === 'string'
+          ? parsed.location.trim()
+          : '';
+      const shouldUseContextLocation =
+        !this.isRecord(parsed) || parsed.location === undefined;
+      return {
+        queries,
+        location:
+          plannedLocation && plannedLocation.toLowerCase() !== 'null'
+            ? plannedLocation
+            : shouldUseContextLocation && this.isLocationRelative(request)
+              ? this.contextLocation(request.companyContext)
+              : undefined,
+        timeFilter:
+          this.timeFilter([request.userQuery, request.optimizedQuery || '']) ||
+          this.timeFilter(queries),
+      };
     } catch (error) {
       this.logger.warn(
         `Search query generation failed; using request fallback: ${this.errorMessage(error)}`,
       );
-      return this.uniqueStrings([
+      const queries = this.uniqueStrings([
         request.optimizedQuery || '',
         request.userQuery,
       ]);
+      return {
+        queries,
+        location: this.isLocationRelative(request)
+          ? this.contextLocation(request.companyContext)
+          : undefined,
+        timeFilter:
+          this.timeFilter([request.userQuery, request.optimizedQuery || '']) ||
+          this.timeFilter(queries),
+      };
     }
   }
 
-  private async runSearches(queries: string[]): Promise<FirecrawlDocument[]> {
+  private async runSearches(
+    queries: string[],
+    plan: WebSearchPlan,
+  ): Promise<SearchCandidate[]> {
     const responses = await Promise.allSettled(
       queries.map((query) =>
         this.runFirecrawlRequest(() =>
-          this.firecrawl!.search(query, { limit: 8 }),
+          this.firecrawl!.search(query, {
+            limit: 8,
+            sources: ['web'],
+            highlights: true,
+            excludeDomains: this.unsupportedHosts(),
+            ...(plan.location ? { location: plan.location } : {}),
+            ...(plan.timeFilter ? { tbs: plan.timeFilter } : {}),
+          }),
         ),
       ),
     );
-    const documents: FirecrawlDocument[] = [];
-    const seen = new Set<string>();
+    const candidates: SearchCandidate[] = [];
 
     responses.forEach((response, index) => {
       if (response.status === 'rejected') {
@@ -206,34 +279,93 @@ Make the queries appropriate for the persona's department and the user's actual 
         );
         return;
       }
-      for (const document of (response.value.web ||
-        []) as FirecrawlDocument[]) {
-        const url = this.documentUrl(document);
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        documents.push(document);
-      }
+      ((response.value.web || []) as FirecrawlDocument[]).forEach(
+        (document, resultIndex) => {
+          const url = this.documentUrl(document);
+          if (!url) return;
+          candidates.push({ document, queryIndex: index, resultIndex });
+        },
+      );
     });
 
-    return documents;
+    return candidates;
   }
 
   private selectPrimarySites(
-    documents: FirecrawlDocument[],
+    candidates: SearchCandidate[],
+    request: ConversationWebResearchRequest,
+    queries: string[],
     limit: number,
-  ): Array<{ url: string; document: FirecrawlDocument }> {
-    const selected: Array<{ url: string; document: FirecrawlDocument }> = [];
-    const seenHosts = new Set<string>();
+  ): PrimarySite[] {
+    const grouped = new Map<
+      string,
+      SearchCandidate & { queryIndexes: Set<number>; bestResultIndex: number }
+    >();
 
-    for (const document of documents) {
-      const rawUrl = this.documentUrl(document);
-      const parsed = this.safeUrl(rawUrl);
+    for (const candidate of candidates) {
+      const normalized = this.normalizeUrl(
+        this.documentUrl(candidate.document),
+      );
+      if (!normalized) continue;
+      const parsed = this.safeUrl(normalized);
       if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) continue;
-      const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
-      if (seenHosts.has(host) || this.isUnsupportedHost(host)) continue;
+      const host = this.normalizedHost(parsed);
+      if (this.isUnsupportedHost(host)) continue;
 
+      const existing = grouped.get(normalized);
+      if (existing) {
+        existing.queryIndexes.add(candidate.queryIndex);
+        existing.bestResultIndex = Math.min(
+          existing.bestResultIndex,
+          candidate.resultIndex,
+        );
+      } else {
+        grouped.set(normalized, {
+          ...candidate,
+          queryIndexes: new Set([candidate.queryIndex]),
+          bestResultIndex: candidate.resultIndex,
+        });
+      }
+    }
+
+    const terms = this.relevanceTerms(request, queries);
+    const companyName = this.contextField(
+      request.companyContext,
+      'Company Name',
+    );
+    const ranked = [...grouped.entries()]
+      .map(([pageUrl, candidate]) => {
+        const parsed = this.safeUrl(pageUrl)!;
+        const relevance = this.documentRelevance(
+          candidate.document,
+          terms,
+          companyName,
+        );
+        const relevanceScore =
+          relevance.score +
+          candidate.queryIndexes.size * 7 +
+          Math.max(0, 8 - candidate.bestResultIndex);
+        return {
+          siteUrl: parsed.origin,
+          pageUrl,
+          document: candidate.document,
+          relevanceScore,
+          matchedTerms: relevance.matchedTerms,
+        };
+      })
+      .filter(
+        (candidate) => candidate.matchedTerms >= Math.min(2, terms.length),
+      )
+      .sort((left, right) => right.relevanceScore - left.relevanceScore);
+
+    const selected: PrimarySite[] = [];
+    const seenHosts = new Set<string>();
+    for (const candidate of ranked) {
+      const parsed = this.safeUrl(candidate.pageUrl)!;
+      const host = this.normalizedHost(parsed);
+      if (seenHosts.has(host)) continue;
       seenHosts.add(host);
-      selected.push({ url: parsed.origin, document });
+      selected.push(candidate);
       if (selected.length === limit) break;
     }
 
@@ -241,32 +373,57 @@ Make the queries appropriate for the persona's department and the user's actual 
   }
 
   private async scrapeSite(
-    site: { url: string; document: FirecrawlDocument },
+    site: PrimarySite,
     request: ConversationWebResearchRequest,
   ): Promise<{ results: ConversationWebSearchResult[]; failures: number }> {
-    const homepage = await this.scrapePage(site.url, site.url, 'homepage');
-    if (!homepage) {
-      const fallback = this.toResult(site.document, site.url, 'homepage');
+    const parsedPage = this.safeUrl(site.pageUrl);
+    const pageType =
+      parsedPage && parsedPage.pathname === '/' ? 'homepage' : 'subpage';
+    const landingPage = await this.scrapePage(
+      site.pageUrl,
+      site.siteUrl,
+      pageType,
+    );
+    if (!landingPage) {
+      const fallback = this.toResult(site.document, site.siteUrl, pageType);
       return { results: fallback ? [fallback] : [], failures: 1 };
     }
 
-    const links = this.selectInternalLinks(
-      homepage.content,
-      site.url,
-      request.persona?.primary_focus_role,
-      5,
-    );
+    const terms = this.relevanceTerms(request, []);
+    if (!this.isRelevantResult(landingPage, terms)) {
+      this.logger.warn(
+        `Discarded irrelevant scraped page ${landingPage.url} for query "${request.userQuery}"`,
+      );
+      return { results: [], failures: 0 };
+    }
+
+    // Search-result articles and reports are already the evidence target. Only
+    // expand a true homepage, and only to links that match the research topic.
+    const links =
+      pageType === 'homepage'
+        ? this.selectInternalLinks(
+            landingPage.content,
+            site.siteUrl,
+            request.persona?.primary_focus_role,
+            2,
+            terms,
+          )
+        : [];
     this.logger.log(
-      `Scraping ${links.length} priority subpages for ${site.url}`,
+      `Scraping ${links.length} query-relevant subpages for ${site.siteUrl}`,
     );
     const settled = await this.allSettledWithConcurrency(links, 3, (url) =>
-      this.scrapePage(url, site.url, 'subpage'),
+      this.scrapePage(url, site.siteUrl, 'subpage'),
     );
-    const results = [homepage];
+    const results = [landingPage];
     let failures = 0;
 
     settled.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value) {
+      if (
+        result.status === 'fulfilled' &&
+        result.value &&
+        this.isRelevantResult(result.value, terms)
+      ) {
         results.push(result.value);
       } else {
         failures += 1;
@@ -318,11 +475,12 @@ Make the queries appropriate for the persona's department and the user's actual 
     siteUrl: string,
     personaRole = 'GENERAL_ASSISTANT',
     limit = 5,
+    relevanceTerms: string[] = [],
   ): string[] {
     const base = this.safeUrl(siteUrl);
     if (!base) return [];
     const candidates = new Map<string, number>();
-    const linkPattern = /\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+    const linkPattern = /\[([^\]]*)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
     const roleKeywords = this.roleKeywords(personaRole);
     const genericKeywords = [
       'about',
@@ -343,9 +501,9 @@ Make the queries appropriate for the persona's department and the user's actual 
 
     for (const match of markdown.matchAll(linkPattern)) {
       try {
-        const url = new URL(match[1], base);
-        const host = url.hostname.toLowerCase().replace(/^www\./, '');
-        const baseHost = base.hostname.toLowerCase().replace(/^www\./, '');
+        const url = new URL(match[2], base);
+        const host = this.normalizedHost(url);
+        const baseHost = this.normalizedHost(base);
         if (host !== baseHost || !['http:', 'https:'].includes(url.protocol))
           continue;
         url.hash = '';
@@ -366,6 +524,10 @@ Make the queries appropriate for the persona's department and the user's actual 
         score +=
           genericKeywords.filter((word) => path.includes(word)).length * 5;
         score += roleKeywords.filter((word) => path.includes(word)).length * 8;
+        const linkText = `${match[1]} ${this.decodeUrlComponent(path)}`;
+        const topicMatches = this.countTermMatches(linkText, relevanceTerms);
+        if (relevanceTerms.length > 0 && topicMatches === 0) continue;
+        score += topicMatches * 12;
         url.hostname = base.hostname;
         const normalized = url.toString().replace(/\/$/, '');
         candidates.set(
@@ -440,10 +602,33 @@ Make the queries appropriate for the persona's department and the user's actual 
     }
   }
 
+  private normalizeUrl(value?: string): string | null {
+    const url = this.safeUrl(value);
+    if (!url) return null;
+    url.hash = '';
+    for (const parameter of [...url.searchParams.keys()]) {
+      if (/^(utm_|fbclid$|gclid$|ref$|source$)/i.test(parameter)) {
+        url.searchParams.delete(parameter);
+      }
+    }
+    return url.toString().replace(/\/$/, '');
+  }
+
+  private normalizedHost(url: URL): string {
+    return url.hostname.toLowerCase().replace(/^www\./, '');
+  }
+
   private isUnsupportedHost(host: string): boolean {
+    return this.unsupportedHosts().some(
+      (blocked) => host === blocked || host.endsWith(`.${blocked}`),
+    );
+  }
+
+  private unsupportedHosts(): string[] {
     return [
       'google.com',
       'bing.com',
+      'reddit.com',
       'youtube.com',
       'facebook.com',
       'instagram.com',
@@ -451,7 +636,173 @@ Make the queries appropriate for the persona's department and the user's actual 
       'x.com',
       'twitter.com',
       'tiktok.com',
-    ].some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+    ];
+  }
+
+  private relevanceTerms(
+    request: ConversationWebResearchRequest,
+    queries: string[],
+  ): string[] {
+    return this.uniqueStrings(
+      this.tokenize(
+        [request.userQuery, request.optimizedQuery || '', ...queries].join(' '),
+      ),
+    ).slice(0, 30);
+  }
+
+  private tokenize(value: string): string[] {
+    const stopWords = new Set([
+      'about',
+      'also',
+      'and',
+      'are',
+      'best',
+      'country',
+      'find',
+      'for',
+      'from',
+      'give',
+      'in',
+      'list',
+      'most',
+      'of',
+      'our',
+      'search',
+      'show',
+      'the',
+      'their',
+      'top',
+      'what',
+      'which',
+      'with',
+    ]);
+    const matches = (value
+      .toLowerCase()
+      .match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || []) as string[];
+    return matches
+      .map((term: string) => term.replace(/^[._-]+|[._-]+$/g, ''))
+      .filter(
+        (term: string) =>
+          term.length >= 3 && !stopWords.has(term) && !/^\d{1,3}$/.test(term),
+      );
+  }
+
+  private documentRelevance(
+    document: FirecrawlDocument,
+    terms: string[],
+    companyName?: string,
+  ): { score: number; matchedTerms: number } {
+    const title = [
+      document.title,
+      document.metadata?.title,
+      document.metadata?.ogTitle,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const description = [
+      document.description,
+      document.metadata?.description,
+      document.metadata?.ogDescription,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const url = this.documentUrl(document);
+    const titleMatches = this.matchedTerms(title, terms);
+    const descriptionMatches = this.matchedTerms(description, terms);
+    const urlMatches = this.matchedTerms(this.decodeUrlComponent(url), terms);
+    const allMatches = new Set([
+      ...titleMatches,
+      ...descriptionMatches,
+      ...urlMatches,
+    ]);
+    let score =
+      titleMatches.size * 10 +
+      descriptionMatches.size * 5 +
+      urlMatches.size * 6;
+    if (
+      companyName &&
+      `${title} ${description} ${url}`
+        .toLowerCase()
+        .includes(companyName.toLowerCase())
+    ) {
+      score += 12;
+    }
+    const parsed = this.safeUrl(url);
+    if (
+      parsed &&
+      (this.normalizedHost(parsed) === 'nrb.org.np' ||
+        /(^|\.)(gov|gov\.np)$/.test(this.normalizedHost(parsed)))
+    ) {
+      score += 15;
+    } else if (parsed && this.normalizedHost(parsed).endsWith('.np')) {
+      score += 5;
+    }
+    return { score, matchedTerms: allMatches.size };
+  }
+
+  private isRelevantResult(
+    result: ConversationWebSearchResult,
+    terms: string[],
+  ): boolean {
+    if (terms.length === 0) return true;
+    const evidence = `${result.title} ${result.snippet} ${result.url} ${result.content.slice(0, 6000)}`;
+    return this.countTermMatches(evidence, terms) >= Math.min(2, terms.length);
+  }
+
+  private matchedTerms(value: string, terms: string[]): Set<string> {
+    const normalized = ` ${value.toLowerCase().replace(/[^\p{L}\p{N}._-]+/gu, ' ')} `;
+    return new Set(
+      terms.filter((term) => normalized.includes(` ${term.toLowerCase()} `)),
+    );
+  }
+
+  private countTermMatches(value: string, terms: string[]): number {
+    return this.matchedTerms(value, terms).size;
+  }
+
+  private contextLocation(companyContext?: string): string | undefined {
+    const location = this.contextField(companyContext, 'Location');
+    return location && !/^not specified$/i.test(location)
+      ? location
+      : undefined;
+  }
+
+  private isLocationRelative(request: ConversationWebResearchRequest): boolean {
+    return /\b(our|local|domestic|home)\s+(country|market|region)|\bin\s+(our|the)\s+country\b/i.test(
+      `${request.userQuery} ${request.optimizedQuery || ''}`,
+    );
+  }
+
+  private contextField(
+    companyContext: string | undefined,
+    field: string,
+  ): string | undefined {
+    const match = companyContext?.match(
+      new RegExp(`(?:^|\\n)${field}:\\s*([^\\n]+)`, 'i'),
+    );
+    return match?.[1]?.trim();
+  }
+
+  private timeFilter(queries: string[]): string | undefined {
+    const years = [
+      ...new Set(queries.join(' ').match(/\b(?:19|20)\d{2}\b/g) || []),
+    ]
+      .map(Number)
+      .sort((left, right) => left - right);
+    if (years.length === 0) return undefined;
+    return `cdr:1,cd_min:01/01/${years[0]},cd_max:12/31/${years[years.length - 1]}`;
+  }
+
+  private decodeUrlComponent(value: string): string {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
   }
 
   private uniqueStrings(values: string[]): string[] {

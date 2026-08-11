@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -42,6 +43,12 @@ export class KnowledgeBaseService {
     organizationId: string,
   ): Promise<KnowledgeBase> {
     try {
+      if (!organizationId) {
+        throw new BadRequestException(
+          'Organization is required to create a knowledge base',
+        );
+      }
+
       const knowledgeBase = await this.knowledgeBaseModel.create({
         ...createDto,
         created_by: userId,

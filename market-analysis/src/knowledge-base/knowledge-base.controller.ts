@@ -14,6 +14,7 @@ import {
   HttpStatus,
   HttpCode,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -22,6 +23,7 @@ import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator';
 
 @Controller('knowledge-bases')
 @UseGuards(JwtAuthGuard)
@@ -35,12 +37,13 @@ export class KnowledgeBaseController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createKnowledgeBaseDto: CreateKnowledgeBaseDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const organizationId = this.requireOrganizationId(user);
     const knowledgeBase = await this.knowledgeBaseService.create(
       createKnowledgeBaseDto,
       user.userId,
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -54,9 +57,10 @@ export class KnowledgeBaseController {
    * Get all knowledge bases for the organization
    */
   @Get()
-  async findAll(@CurrentUser() user: any) {
+  async findAll(@CurrentUser() user: CurrentUserData) {
+    const organizationId = this.requireOrganizationId(user);
     const knowledgeBases = await this.knowledgeBaseService.findAll(
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -71,10 +75,11 @@ export class KnowledgeBaseController {
    * Get a single knowledge base by ID
    */
   @Get(':id')
-  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
+  async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    const organizationId = this.requireOrganizationId(user);
     const knowledgeBase = await this.knowledgeBaseService.findOne(
       id,
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -91,12 +96,13 @@ export class KnowledgeBaseController {
   async update(
     @Param('id') id: string,
     @Body() updateKnowledgeBaseDto: UpdateKnowledgeBaseDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const organizationId = this.requireOrganizationId(user);
     const knowledgeBase = await this.knowledgeBaseService.update(
       id,
       updateKnowledgeBaseDto,
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -111,8 +117,9 @@ export class KnowledgeBaseController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id') id: string, @CurrentUser() user: any) {
-    await this.knowledgeBaseService.remove(id, user.organizationId);
+  async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    const organizationId = this.requireOrganizationId(user);
+    await this.knowledgeBaseService.remove(id, organizationId);
 
     return {
       success: true,
@@ -147,12 +154,13 @@ export class KnowledgeBaseController {
       }),
     )
     file: Express.Multer.File,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const organizationId = this.requireOrganizationId(user);
     const uploadedFile = await this.knowledgeBaseService.uploadFile(
       id,
       file,
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -173,8 +181,9 @@ export class KnowledgeBaseController {
     @Body('knowledge_base_ids') knowledgeBaseIds: string[],
     @Body('top_k') topK: number,
     @Body('min_score') minScore: number,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const organizationId = this.requireOrganizationId(user);
     if (!query || query.trim().length === 0) {
       return {
         success: false,
@@ -184,7 +193,7 @@ export class KnowledgeBaseController {
 
     const results = await this.knowledgeBaseService.query(
       query,
-      user.organizationId,
+      organizationId,
       {
         knowledgeBaseIds,
         topK: topK || 10,
@@ -204,10 +213,14 @@ export class KnowledgeBaseController {
    * Get file statistics for a knowledge base
    */
   @Get(':id/statistics')
-  async getStatistics(@Param('id') id: string, @CurrentUser() user: any) {
+  async getStatistics(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const organizationId = this.requireOrganizationId(user);
     const statistics = await this.knowledgeBaseService.getFileStatistics(
       id,
-      user.organizationId,
+      organizationId,
     );
 
     return {
@@ -225,17 +238,28 @@ export class KnowledgeBaseController {
   async deleteFile(
     @Param('id') id: string,
     @Param('fileId') fileId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const organizationId = this.requireOrganizationId(user);
     await this.knowledgeBaseService.deleteFile(
       fileId,
       id,
-      user.organizationId,
+      organizationId,
     );
 
     return {
       success: true,
       message: 'File deleted successfully',
     };
+  }
+
+  private requireOrganizationId(user: CurrentUserData): string {
+    if (!user.organizationId) {
+      throw new BadRequestException(
+        'User must belong to an organization to use knowledge bases',
+      );
+    }
+
+    return user.organizationId;
   }
 }

@@ -98,6 +98,9 @@ RULES:
 - If no knowledge base exists, set requiresKnowledgeBase=false
 - The organization profile supplied with the query is trusted company context and does not require the knowledge base
 - Queries about "uploaded documents" or "my files" use the knowledge base
+- When a persona has a knowledge base, any substantive request to advise, analyze, qualify, calculate, compare, plan, recommend, or apply the persona's expertise should use the knowledge base even if the user does not explicitly mention documents
+- Only greetings, thanks, and simple social conversation should normally skip an available persona knowledge base
+- A knowledgeBaseQuery should preserve the user's domain terms and seek exact internal definitions, policies, constraints, and decision criteria; never rename a framework in the query
 - Requests about "our company" or "our competitors" should use the supplied organization profile to create a specific search query
 - Queries with temporal indicators like "today", "now", "latest", "current" likely need web search
 - General knowledge questions can use both sources
