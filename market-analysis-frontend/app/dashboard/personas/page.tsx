@@ -142,7 +142,8 @@ export default function PersonasPage() {
   };
 
   const populateEditForm = (persona: Persona) => {
-    const knowledgeBaseIds = persona.knowledge_bases?.map((knowledgeBase) => knowledgeBase.id) ?? [];
+    const assignedKnowledgeBases = persona.knowledgeBases ?? persona.knowledge_bases ?? [];
+    const knowledgeBaseIds = assignedKnowledgeBases.map((knowledgeBase) => knowledgeBase.id);
     setEditingPersonaId(persona.id);
     setOriginalKnowledgeBaseIds(knowledgeBaseIds);
     setFormData({

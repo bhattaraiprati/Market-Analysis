@@ -30,32 +30,38 @@ export default function DashboardPage() {
   const [content, setContent] = useState('');
   const [selectionError, setSelectionError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const submissionLockRef = useRef(false);
+  const hasPendingResponse = Boolean(
+    currentConversation?.messages.some(
+      (message) =>
+        message.role === 'assistant' && ['pending', 'processing'].includes(message.status)
+    )
+  );
+  const isAwaitingResponse = isSending || hasPendingResponse;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentConversation?.messages]);
 
   useEffect(() => {
-    const hasPendingResponse = currentConversation?.messages.some(
-      (message) => message.role === 'assistant' && ['pending', 'processing'].includes(message.status)
-    );
     if (!currentConversation || !hasPendingResponse) return;
 
     const refreshTimer = window.setTimeout(() => {
       fetchConversationById(currentConversation.id).catch(console.error);
     }, 2500);
     return () => window.clearTimeout(refreshTimer);
-  }, [currentConversation, fetchConversationById]);
+  }, [currentConversation, fetchConversationById, hasPendingResponse]);
 
   const submitMessage = async (event: FormEvent) => {
     event.preventDefault();
     const trimmedContent = content.trim();
-    if (!trimmedContent || isSending) return;
+    if (!trimmedContent || isAwaitingResponse || submissionLockRef.current) return;
     if (!selectedPersona) {
       setSelectionError('Choose a persona from the header before starting a chat.');
       return;
     }
 
+    submissionLockRef.current = true;
     setSelectionError('');
     clearError();
     setContent('');
@@ -69,6 +75,8 @@ export default function DashboardPage() {
     } catch (submitError) {
       setContent(trimmedContent);
       console.error('Failed to send message:', submitError);
+    } finally {
+      submissionLockRef.current = false;
     }
   };
 
@@ -151,8 +159,9 @@ export default function DashboardPage() {
               <button
                 key={starter.title}
                 type="button"
+                disabled={isAwaitingResponse}
                 onClick={() => setContent(starter.prompt)}
-                className="flex items-start gap-3 rounded-xl border bg-white p-4 text-left transition-all hover:border-[#1a7070] hover:shadow-sm"
+                className="flex items-start gap-3 rounded-xl border bg-white p-4 text-left transition-all hover:border-[#1a7070] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ borderColor: '#dce5e4' }}
               >
                 <span className="material-symbols-outlined rounded-lg p-2" style={{ backgroundColor: '#eef7f7', color: '#1a7070' }}>{starter.icon}</span>
@@ -179,6 +188,7 @@ export default function DashboardPage() {
           <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 shadow-lg" style={{ borderColor: '#bec9c8' }}>
             <textarea
               rows={1}
+              disabled={isAwaitingResponse}
               value={content}
               onChange={(event) => setContent(event.target.value)}
               onKeyDown={(event) => {
@@ -187,24 +197,33 @@ export default function DashboardPage() {
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              placeholder={selectedPersona ? `Message ${selectedPersona.name}…` : 'Choose a persona to begin…'}
-              className="max-h-36 min-h-11 flex-1 resize-none border-none bg-transparent px-3 py-2.5 text-sm outline-none sm:text-base"
+              placeholder={isAwaitingResponse
+                ? 'Please wait for the response to finish…'
+                : selectedPersona
+                  ? `Message ${selectedPersona.name}…`
+                  : 'Choose a persona to begin…'}
+              aria-busy={isAwaitingResponse}
+              className="max-h-36 min-h-11 flex-1 resize-none border-none bg-transparent px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
               style={{ color: '#0b1c30' }}
             />
             <button
               type="submit"
-              disabled={!content.trim() || isSending}
-              aria-label="Send message"
+              disabled={!content.trim() || isAwaitingResponse}
+              aria-label={isAwaitingResponse ? 'Waiting for response' : 'Send message'}
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl disabled:cursor-not-allowed disabled:opacity-40"
               style={{ backgroundColor: '#005657', color: '#ffffff' }}
             >
-              <span className={`material-symbols-outlined ${isSending ? 'animate-spin' : ''}`}>
-                {isSending ? 'progress_activity' : 'arrow_upward'}
+              <span className={`material-symbols-outlined ${isAwaitingResponse ? 'animate-spin' : ''}`}>
+                {isAwaitingResponse ? 'progress_activity' : 'arrow_upward'}
               </span>
             </button>
           </div>
           <p className="mt-2 text-center text-xs" style={{ color: '#6f7979' }}>
-            {currentConversation ? 'Enter to send · Shift + Enter for a new line' : 'A conversation is created only after you send your first message.'}
+            {isAwaitingResponse
+              ? 'Please wait for the full response before sending another prompt.'
+              : currentConversation
+                ? 'Enter to send · Shift + Enter for a new line'
+                : 'A conversation is created only after you send your first message.'}
           </p>
         </form>
       </footer>

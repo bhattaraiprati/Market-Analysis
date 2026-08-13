@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnowledgeBaseStore } from '@/lib/stores/knowledgeBaseStore';
+import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 
 export default function KnowledgeBasePage() {
   const router = useRouter();
@@ -20,6 +20,7 @@ export default function KnowledgeBasePage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [filterVisibility, setFilterVisibility] = useState<string>('ALL');
+  const [openingKnowledgeBaseId, setOpeningKnowledgeBaseId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchKnowledgeBases().catch(console.error);
@@ -32,6 +33,13 @@ export default function KnowledgeBasePage() {
     } catch (err) {
       console.error('Failed to delete knowledge base:', err);
     }
+  };
+
+  const handleOpenKnowledgeBase = (id: string) => {
+    if (openingKnowledgeBaseId) return;
+
+    setOpeningKnowledgeBaseId(id);
+    router.push(`/dashboard/knowledge/${id}`);
   };
 
   const filteredKBs = knowledgeBases.filter((kb) => {
@@ -421,15 +429,17 @@ export default function KnowledgeBasePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredKBs.map((kb) => {
               const visColors = getVisibilityColor(kb.visibility);
+              const isOpening = openingKnowledgeBaseId === kb.id;
               return (
                 <div
                   key={kb.id}
-                  className="rounded-xl p-6 transition-all cursor-pointer group hover:shadow-lg"
+                  aria-busy={isOpening}
+                  className="relative overflow-hidden rounded-xl p-6 transition-all cursor-pointer group hover:shadow-lg"
                   style={{
                     backgroundColor: '#ffffff',
                     border: '1px solid #bec9c8',
                   }}
-                  onClick={() => router.push(`/dashboard/knowledge/${kb.id}`)}
+                  onClick={() => handleOpenKnowledgeBase(kb.id)}
                   onMouseEnter={(e) =>
                     (e.currentTarget.style.borderColor = '#005657')
                   }
@@ -437,6 +447,18 @@ export default function KnowledgeBasePage() {
                     (e.currentTarget.style.borderColor = '#bec9c8')
                   }
                 >
+                  {isOpening && (
+                    <div
+                      className="absolute inset-0 z-10 flex items-center justify-center bg-white/90"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <LoadingSpinner
+                        label="Opening knowledge base…"
+                        size="md"
+                        className="flex-col text-[#005657]"
+                      />
+                    </div>
+                  )}
                   <div className="flex items-start justify-between mb-4">
                     <div
                       className="w-12 h-12 rounded-lg flex items-center justify-center"
@@ -460,11 +482,12 @@ export default function KnowledgeBasePage() {
                         {kb.visibility}
                       </span>
                       <button
+                        disabled={Boolean(openingKnowledgeBaseId)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setDeleteConfirm(kb.id);
                         }}
-                        className="p-1 rounded hover:bg-red-100 transition-colors"
+                        className="p-1 rounded hover:bg-red-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                         style={{ color: '#c00' }}
                       >
                         <span className="material-symbols-outlined text-lg">

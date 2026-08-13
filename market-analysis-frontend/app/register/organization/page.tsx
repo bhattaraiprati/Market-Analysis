@@ -6,8 +6,6 @@ import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
 import {
   Building2,
-  Globe,
-  Target,
   ArrowRight,
   ArrowLeft,
   Check,
@@ -15,7 +13,6 @@ import {
   Plus,
   Info,
   Flag,
-  Trash2,
   RocketIcon as Rocket,
   User,
   TrendingUp,
@@ -38,6 +35,38 @@ interface OrganizationData {
   businessGoals: string;
 }
 
+type FormErrors = Partial<Record<keyof OrganizationData, string>>;
+
+const fieldsByStep: Record<StepType, (keyof OrganizationData)[]> = {
+  profile: ['companyName', 'industry', 'companySize', 'website'],
+  market: ['targetCustomers'],
+  goals: ['offerings', 'businessGoals'],
+};
+
+const normalizeWebsite = (website: string) => {
+  const trimmedWebsite = website.trim();
+  if (!trimmedWebsite) return '';
+
+  return /^https?:\/\//i.test(trimmedWebsite)
+    ? trimmedWebsite
+    : `https://${trimmedWebsite}`;
+};
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+
+  return (
+    <p
+      id={id}
+      role="alert"
+      className="text-sm"
+      style={{ color: '#ba1a1a', fontFamily: 'Inter, sans-serif' }}
+    >
+      {message}
+    </p>
+  );
+}
+
 const defaultCompetitors = [
   'Turing',
   'Fractal Analytics',
@@ -52,8 +81,8 @@ export default function OrganizationRegisterPage() {
   const [currentStep, setCurrentStep] = useState<StepType>('profile');
   const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newProduct, setNewProduct] = useState('');
   const [newCompetitor, setNewCompetitor] = useState('');
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   const [formData, setFormData] = useState<OrganizationData>({
     companyName: '',
@@ -76,22 +105,108 @@ export default function OrganizationRegisterPage() {
     { id: 'goals' as StepType, label: 'Goals', icon: Flag },
   ];
 
-  const updateFormData = (field: keyof OrganizationData, value: any) => {
+  const updateFormData = <K extends keyof OrganizationData>(
+    field: K,
+    value: OrganizationData[K]
+  ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormErrors((previousErrors) => {
+      if (!previousErrors[field]) return previousErrors;
+
+      const nextErrors = { ...previousErrors };
+      delete nextErrors[field];
+      return nextErrors;
+    });
   };
 
-  const addProduct = () => {
-    if (newProduct.trim()) {
-      updateFormData('products', [...formData.products, newProduct.trim()]);
-      setNewProduct('');
+  const validateField = (field: keyof OrganizationData): string | undefined => {
+    const value = formData[field];
+    const textValue = typeof value === 'string' ? value.trim() : '';
+
+    switch (field) {
+      case 'companyName':
+        if (!textValue) return 'Organization name is required.';
+        if (textValue.length < 2) return 'Organization name must be at least 2 characters.';
+        break;
+      case 'industry':
+        if (!textValue) return 'Industry is required.';
+        if (textValue.length < 2) return 'Industry must be at least 2 characters.';
+        break;
+      case 'companySize':
+        if (!textValue) return 'Company size is required.';
+        break;
+      case 'website':
+        if (textValue) {
+          try {
+            const website = new URL(normalizeWebsite(textValue));
+            if (!['http:', 'https:'].includes(website.protocol) || !website.hostname.includes('.')) {
+              return 'Enter a valid website, such as example.com.';
+            }
+          } catch {
+            return 'Enter a valid website, such as example.com.';
+          }
+        }
+        break;
+      case 'targetCustomers':
+        if (!textValue) return 'Target customers are required.';
+        if (textValue.length < 10) return 'Target customers must be at least 10 characters.';
+        break;
+      case 'offerings':
+        if (!textValue) return 'Product or service is required.';
+        if (textValue.length < 10) return 'Product or service must be at least 10 characters.';
+        break;
+      case 'businessGoals':
+        if (!textValue) return 'Business goals are required.';
+        if (textValue.length < 10) return 'Business goals must be at least 10 characters.';
+        break;
     }
+
+    return undefined;
   };
 
-  const removeProduct = (index: number) => {
-    updateFormData(
-      'products',
-      formData.products.filter((_, i) => i !== index)
-    );
+  const getValidationErrors = (stepIds: StepType[]) => {
+    const nextErrors: FormErrors = {};
+
+    stepIds.flatMap((step) => fieldsByStep[step]).forEach((field) => {
+      const message = validateField(field);
+      if (message) nextErrors[field] = message;
+    });
+
+    return nextErrors;
+  };
+
+  const focusFirstInvalidField = (errors: FormErrors, step: StepType) => {
+    const firstInvalidField = fieldsByStep[step].find((field) => errors[field]);
+    if (!firstInvalidField) return;
+
+    window.setTimeout(() => document.getElementById(firstInvalidField)?.focus(), 0);
+  };
+
+  const validateStep = (step: StepType) => {
+    const nextErrors = getValidationErrors([step]);
+
+    setFormErrors((previousErrors) => {
+      const updatedErrors = { ...previousErrors };
+      fieldsByStep[step].forEach((field) => delete updatedErrors[field]);
+      return { ...updatedErrors, ...nextErrors };
+    });
+
+    if (Object.keys(nextErrors).length > 0) {
+      focusFirstInvalidField(nextErrors, step);
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateSingleField = (field: keyof OrganizationData) => {
+    const message = validateField(field);
+    setFormErrors((previousErrors) => {
+      const nextErrors = { ...previousErrors };
+      if (message) nextErrors[field] = message;
+      else delete nextErrors[field];
+      return nextErrors;
+    });
   };
 
   const toggleCompetitor = (competitor: string) => {
@@ -125,6 +240,8 @@ export default function OrganizationRegisterPage() {
       e.preventDefault();
       e.stopPropagation();
     }
+    if (!validateStep(currentStep)) return;
+
     if (currentStep === 'profile') setCurrentStep('market');
     else if (currentStep === 'market') setCurrentStep('goals');
   };
@@ -147,6 +264,20 @@ export default function OrganizationRegisterPage() {
       return;
     }
 
+    const validationErrors = getValidationErrors(['profile', 'market', 'goals']);
+    if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
+      const firstInvalidStep = steps.find((step) =>
+        fieldsByStep[step.id].some((field) => validationErrors[field])
+      )?.id;
+
+      if (firstInvalidStep) {
+        setCurrentStep(firstInvalidStep);
+        focusFirstInvalidField(validationErrors, firstInvalidStep);
+      }
+      return;
+    }
+
     setIsSubmitting(true);
     clearError();
 
@@ -156,7 +287,7 @@ export default function OrganizationRegisterPage() {
         name: formData.companyName,
         industry: formData.industry,
         description: formData.description,
-        website: formData.website,
+        website: normalizeWebsite(formData.website) || undefined,
         product_or_service: formData.offerings,
         target_customers: formData.targetCustomers,
         business_goals: formData.businessGoals,
@@ -338,7 +469,7 @@ export default function OrganizationRegisterPage() {
               className="bg-white rounded-xl p-8 md:p-10 shadow-sm relative overflow-hidden"
               style={{ border: '1px solid #bec9c8' }}
             >
-              <form onSubmit={handleSubmit} className="space-y-8">
+              <form onSubmit={handleSubmit} className="space-y-8" noValidate>
                 {/* Error Message */}
                 {error && (
                   <div
@@ -382,10 +513,10 @@ export default function OrganizationRegisterPage() {
                           color: '#6f7979',
                         }}
                       >
-                        Organization Name
+                        Organization Name <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                       </label>
                       <input
-                        className="w-full py-3 px-4 text-[#005657] font-bold border border-[#bec9c8] rounded-lg outline-none transition-all"
+                        className="w-full py-3 px-4 text-[#005657] font-bold border rounded-lg outline-none transition-all"
                         // style={{
                         //   border: '1px solid #bec9c8',
                         //   fontFamily: 'Hanken Grotesk, sans-serif',
@@ -396,6 +527,8 @@ export default function OrganizationRegisterPage() {
                         //   backgroundColor: '#ffffff',
                         // }}
                         id="companyName"
+                        aria-describedby={formErrors.companyName ? 'companyName-error' : undefined}
+                        aria-invalid={Boolean(formErrors.companyName)}
                         placeholder="Enter company name"
                         required
                         type="text"
@@ -406,10 +539,13 @@ export default function OrganizationRegisterPage() {
                           e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = '#bec9c8';
+                          validateSingleField('companyName');
+                          e.target.style.borderColor = formErrors.companyName ? '#ba1a1a' : '#bec9c8';
                           e.target.style.boxShadow = 'none';
                         }}
+                        style={{ borderColor: formErrors.companyName ? '#ba1a1a' : '#bec9c8' }}
                       />
+                      <FieldError id="companyName-error" message={formErrors.companyName} />
                     </div>
 
                     {/* Industry */}
@@ -424,18 +560,20 @@ export default function OrganizationRegisterPage() {
                           color: '#6f7979',
                         }}
                       >
-                        Industry
+                        Industry <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                       </label>
                       <input
                         className="w-full py-3 px-4 rounded-lg outline-none transition-all"
                         style={{
-                          border: '1px solid #bec9c8',
+                          border: `1px solid ${formErrors.industry ? '#ba1a1a' : '#bec9c8'}`,
                           fontFamily: 'Inter, sans-serif',
                           fontSize: '16px',
                           color: '#0b1c30',
                           backgroundColor: '#ffffff',
                         }}
                         id="industry"
+                        aria-describedby={formErrors.industry ? 'industry-error' : undefined}
+                        aria-invalid={Boolean(formErrors.industry)}
                         placeholder="e.g. Fintech, Healthcare"
                         required
                         type="text"
@@ -446,10 +584,12 @@ export default function OrganizationRegisterPage() {
                           e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = '#bec9c8';
+                          validateSingleField('industry');
+                          e.target.style.borderColor = formErrors.industry ? '#ba1a1a' : '#bec9c8';
                           e.target.style.boxShadow = 'none';
                         }}
                       />
+                      <FieldError id="industry-error" message={formErrors.industry} />
                     </div>
 
                     {/* Website */}
@@ -470,7 +610,7 @@ export default function OrganizationRegisterPage() {
                         <span
                           className="inline-flex items-center px-3 rounded-l-lg"
                           style={{
-                            border: '1px solid #bec9c8',
+                            border: `1px solid ${formErrors.website ? '#ba1a1a' : '#bec9c8'}`,
                             borderRight: 'none',
                             backgroundColor: '#dce9ff',
                             fontFamily: 'Inter, sans-serif',
@@ -483,13 +623,15 @@ export default function OrganizationRegisterPage() {
                         <input
                           className="w-full py-3 px-4 rounded-r-lg outline-none transition-all"
                           style={{
-                            border: '1px solid #bec9c8',
+                            border: `1px solid ${formErrors.website ? '#ba1a1a' : '#bec9c8'}`,
                             fontFamily: 'Inter, sans-serif',
                             fontSize: '16px',
                             color: '#0b1c30',
                             backgroundColor: '#ffffff',
                           }}
                           id="website"
+                          aria-describedby={formErrors.website ? 'website-error' : undefined}
+                          aria-invalid={Boolean(formErrors.website)}
                           placeholder="example.com"
                           type="text"
                           value={formData.website}
@@ -501,13 +643,17 @@ export default function OrganizationRegisterPage() {
                             if (span) span.style.borderColor = '#1a7070';
                           }}
                           onBlur={(e) => {
-                            e.target.style.borderColor = '#bec9c8';
+                            validateSingleField('website');
+                            e.target.style.borderColor = formErrors.website ? '#ba1a1a' : '#bec9c8';
                             e.target.style.boxShadow = 'none';
                             const span = e.target.previousElementSibling as HTMLElement;
-                            if (span) span.style.borderColor = '#bec9c8';
+                            if (span) {
+                              span.style.borderColor = formErrors.website ? '#ba1a1a' : '#bec9c8';
+                            }
                           }}
                         />
                       </div>
+                      <FieldError id="website-error" message={formErrors.website} />
                     </div>
 
                     {/* Description */}
@@ -563,18 +709,20 @@ export default function OrganizationRegisterPage() {
                             color: '#6f7979',
                           }}
                         >
-                          Company Size
+                          Company Size <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                         </label>
                         <select
                           className="w-full py-3 px-4 rounded-lg outline-none transition-all"
                           style={{
-                            border: '1px solid #bec9c8',
+                            border: `1px solid ${formErrors.companySize ? '#ba1a1a' : '#bec9c8'}`,
                             fontFamily: 'Inter, sans-serif',
                             fontSize: '16px',
                             color: '#0b1c30',
                             backgroundColor: '#ffffff',
                           }}
                           id="companySize"
+                          aria-describedby={formErrors.companySize ? 'companySize-error' : undefined}
+                          aria-invalid={Boolean(formErrors.companySize)}
                           required
                           value={formData.companySize}
                           onChange={(e) => updateFormData('companySize', e.target.value)}
@@ -583,7 +731,8 @@ export default function OrganizationRegisterPage() {
                             e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                           }}
                           onBlur={(e) => {
-                            e.target.style.borderColor = '#bec9c8';
+                            validateSingleField('companySize');
+                            e.target.style.borderColor = formErrors.companySize ? '#ba1a1a' : '#bec9c8';
                             e.target.style.boxShadow = 'none';
                           }}
                         >
@@ -595,6 +744,7 @@ export default function OrganizationRegisterPage() {
                           <option value="501-1000">501-1000 employees</option>
                           <option value="1000+">1000+ employees</option>
                         </select>
+                        <FieldError id="companySize-error" message={formErrors.companySize} />
                       </div>
 
                       <div className="space-y-2">
@@ -660,7 +810,7 @@ export default function OrganizationRegisterPage() {
                           color: '#0b1c30',
                         }}
                       >
-                        Target Customers
+                        Target Customers <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                       </label>
                       <p
                         className="mb-4 italic"
@@ -676,7 +826,7 @@ export default function OrganizationRegisterPage() {
                       <textarea
                         className="w-full py-3 px-4 rounded-lg outline-none transition-all resize-none"
                         style={{
-                          border: '1px solid #bec9c8',
+                          border: `1px solid ${formErrors.targetCustomers ? '#ba1a1a' : '#bec9c8'}`,
                           fontFamily: 'Inter, sans-serif',
                           fontSize: '16px',
                           color: '#0b1c30',
@@ -684,7 +834,10 @@ export default function OrganizationRegisterPage() {
                           minHeight: '100px',
                         }}
                         id="targetCustomers"
+                        aria-describedby={formErrors.targetCustomers ? 'targetCustomers-error' : undefined}
+                        aria-invalid={Boolean(formErrors.targetCustomers)}
                         placeholder="e.g., Enterprise firms in North America looking to automate data workflows..."
+                        required
                         rows={4}
                         value={formData.targetCustomers}
                         onChange={(e) => updateFormData('targetCustomers', e.target.value)}
@@ -693,10 +846,12 @@ export default function OrganizationRegisterPage() {
                           e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = '#bec9c8';
+                          validateSingleField('targetCustomers');
+                          e.target.style.borderColor = formErrors.targetCustomers ? '#ba1a1a' : '#bec9c8';
                           e.target.style.boxShadow = 'none';
                         }}
                       />
+                      <FieldError id="targetCustomers-error" message={formErrors.targetCustomers} />
                     </div>
 
                     {/* Known Competitors */}
@@ -926,13 +1081,13 @@ export default function OrganizationRegisterPage() {
                           color: '#0b1c30',
                         }}
                       >
-                        Product or Service
+                        Product or Service <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                         <Info size={16} style={{ color: '#6f7979' }} />
                       </label>
                       <textarea
                         className="w-full py-4 px-4 rounded-lg outline-none transition-all resize-none"
                         style={{
-                          border: '1px solid #bec9c8',
+                          border: `1px solid ${formErrors.offerings ? '#ba1a1a' : '#bec9c8'}`,
                           fontFamily: 'Inter, sans-serif',
                           fontSize: '16px',
                           color: '#0b1c30',
@@ -940,7 +1095,10 @@ export default function OrganizationRegisterPage() {
                           minHeight: '100px',
                         }}
                         id="offerings"
+                        aria-describedby={formErrors.offerings ? 'offerings-error' : undefined}
+                        aria-invalid={Boolean(formErrors.offerings)}
                         placeholder="e.g. Enterprise AI solutions, AI Studio, AI-powered digital transformation services..."
+                        required
                         rows={4}
                         value={formData.offerings}
                         onChange={(e) => updateFormData('offerings', e.target.value)}
@@ -949,10 +1107,12 @@ export default function OrganizationRegisterPage() {
                           e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = '#bec9c8';
+                          validateSingleField('offerings');
+                          e.target.style.borderColor = formErrors.offerings ? '#ba1a1a' : '#bec9c8';
                           e.target.style.boxShadow = 'none';
                         }}
                       />
+                      <FieldError id="offerings-error" message={formErrors.offerings} />
                       <p
                         style={{
                           fontFamily: 'Geist, sans-serif',
@@ -978,13 +1138,13 @@ export default function OrganizationRegisterPage() {
                           color: '#0b1c30',
                         }}
                       >
-                        Business Goals
+                        Business Goals <span aria-hidden="true" style={{ color: '#ba1a1a' }}>*</span>
                         <Flag size={16} style={{ color: '#6f7979' }} />
                       </label>
                       <textarea
                         className="w-full py-4 px-4 rounded-lg outline-none transition-all resize-none"
                         style={{
-                          border: '1px solid #bec9c8',
+                          border: `1px solid ${formErrors.businessGoals ? '#ba1a1a' : '#bec9c8'}`,
                           fontFamily: 'Inter, sans-serif',
                           fontSize: '16px',
                           color: '#0b1c30',
@@ -992,7 +1152,10 @@ export default function OrganizationRegisterPage() {
                           minHeight: '100px',
                         }}
                         id="businessGoals"
+                        aria-describedby={formErrors.businessGoals ? 'businessGoals-error' : undefined}
+                        aria-invalid={Boolean(formErrors.businessGoals)}
                         placeholder="e.g. Expand deployment, scale talent programs, pioneer AI democratization..."
+                        required
                         rows={4}
                         value={formData.businessGoals}
                         onChange={(e) => updateFormData('businessGoals', e.target.value)}
@@ -1001,10 +1164,12 @@ export default function OrganizationRegisterPage() {
                           e.target.style.boxShadow = '0 0 0 2px rgba(26, 112, 112, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = '#bec9c8';
+                          validateSingleField('businessGoals');
+                          e.target.style.borderColor = formErrors.businessGoals ? '#ba1a1a' : '#bec9c8';
                           e.target.style.boxShadow = 'none';
                         }}
                       />
+                      <FieldError id="businessGoals-error" message={formErrors.businessGoals} />
                       <p
                         style={{
                           fontFamily: 'Geist, sans-serif',

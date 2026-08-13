@@ -141,6 +141,11 @@ export interface Persona {
   status: PersonaStatus;
   public_link_enabled?: boolean;
   public_link_token?: string | null;
+  knowledgeBases?: Array<{
+    id: string;
+    name: string;
+  }>;
+  /** @deprecated Compatibility with older snake_case API responses. */
   knowledge_bases?: Array<{
     id: string;
     name: string;

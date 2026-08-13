@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useKnowledgeBaseStore } from '@/lib/stores/knowledgeBaseStore';
+import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import type { KnowledgeBase } from '@/types/api';
 
 type KnowledgeBaseStatistics = {
@@ -39,7 +40,9 @@ export default function KnowledgeBaseDetailPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+  const [isDeletingFile, setIsDeletingFile] = useState(false);
   const [statistics, setStatistics] = useState<KnowledgeBaseStatistics | null>(null);
+  const fileDeleteLockRef = useRef(false);
 
   const loadStatistics = useCallback(async () => {
     if (kbId) {
@@ -71,12 +74,19 @@ export default function KnowledgeBaseDetailPage() {
   };
 
   const handleDeleteFile = async (fileId: string) => {
+    if (fileDeleteLockRef.current) return;
+
+    fileDeleteLockRef.current = true;
+    setIsDeletingFile(true);
     try {
       await deleteFile(kbId, fileId);
       setDeleteFileId(null);
       loadStatistics();
     } catch (err) {
       console.error('Failed to delete file:', err);
+    } finally {
+      fileDeleteLockRef.current = false;
+      setIsDeletingFile(false);
     }
   };
 
@@ -168,17 +178,11 @@ export default function KnowledgeBaseDetailPage() {
   if (isLoading && !currentKB) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8FAFC' }}>
-        <div className="text-center">
-          <div
-            className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center animate-pulse"
-            style={{ backgroundColor: '#e5eeff' }}
-          >
-            <span className="material-symbols-outlined text-4xl" style={{ color: '#005657' }}>
-              database
-            </span>
-          </div>
-          <p style={{ fontFamily: 'Inter, sans-serif', color: '#3f4948' }}>Loading knowledge base...</p>
-        </div>
+        <LoadingSpinner
+          label="Loading knowledge base…"
+          size="lg"
+          className="flex-col text-[#005657]"
+        />
       </div>
     );
   }
@@ -657,6 +661,8 @@ export default function KnowledgeBaseDetailPage() {
           onConfirm={() => handleDeleteFile(deleteFileId)}
           onCancel={() => setDeleteFileId(null)}
           variant="danger"
+          isProcessing={isDeletingFile}
+          processingText="Deleting…"
         />
       )}
     </div>
@@ -1130,6 +1136,8 @@ function ConfirmDialog({
   onConfirm,
   onCancel,
   variant = 'default',
+  isProcessing = false,
+  processingText = 'Processing…',
 }: {
   title: string;
   message: string;
@@ -1138,11 +1146,15 @@ function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   variant?: 'default' | 'danger';
+  isProcessing?: boolean;
+  processingText?: string;
 }) {
   return (
     <div
       className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onCancel}
+      onClick={() => {
+        if (!isProcessing) onCancel();
+      }}
     >
       <div
         className="rounded-xl p-6 max-w-md w-full"
@@ -1188,7 +1200,8 @@ function ConfirmDialog({
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg transition-colors"
+            disabled={isProcessing}
+            className="px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               backgroundColor: '#e5eeff',
               color: '#3f4948',
@@ -1201,7 +1214,9 @@ function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 rounded-lg transition-colors"
+            disabled={isProcessing}
+            aria-busy={isProcessing}
+            className="inline-flex min-w-24 items-center justify-center px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
             style={{
               backgroundColor: variant === 'danger' ? '#c00' : '#005657',
               color: '#ffffff',
@@ -1210,13 +1225,18 @@ function ConfirmDialog({
               fontWeight: '500',
             }}
             onMouseEnter={(e) =>
+              !isProcessing &&
               (e.currentTarget.style.backgroundColor = variant === 'danger' ? '#a00' : '#1a7070')
             }
             onMouseLeave={(e) =>
               (e.currentTarget.style.backgroundColor = variant === 'danger' ? '#c00' : '#005657')
             }
           >
-            {confirmText}
+            {isProcessing ? (
+              <LoadingSpinner label={processingText} size="sm" />
+            ) : (
+              confirmText
+            )}
           </button>
         </div>
       </div>
