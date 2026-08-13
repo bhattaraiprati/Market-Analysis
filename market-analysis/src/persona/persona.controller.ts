@@ -52,7 +52,10 @@ export class PersonaController {
   @Get()
   @UseGuards(JwtAuthGuard)
   async findAll(@CurrentUser() user: any) {
-    const personas = await this.personaService.findAll(user.userId, user.organizationId);
+    const personas = await this.personaService.findAll(
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Personas retrieved successfully',
@@ -61,10 +64,37 @@ export class PersonaController {
     };
   }
 
+  /**
+   * Generate four personalized starter prompts for a new conversation.
+   */
+  @Get(':id/recommended-prompts')
+  @UseGuards(JwtAuthGuard)
+  async getRecommendedPrompts(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    const prompts = await this.personaService.getRecommendedPrompts(
+      id,
+      user.userId,
+      user.organizationId,
+    );
+
+    return {
+      success: true,
+      message: 'Recommended prompts generated successfully',
+      data: prompts,
+      count: prompts.length,
+    };
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async findOne(@Param('id') id: string, @CurrentUser() user: any) {
-    const persona = await this.personaService.findOne(id, user.userId, user.organizationId);
+    const persona = await this.personaService.findOne(
+      id,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Persona retrieved successfully',
@@ -79,7 +109,12 @@ export class PersonaController {
     @Body() updatePersonaDto: UpdatePersonaDto,
     @CurrentUser() user: any,
   ) {
-    const persona = await this.personaService.update(id, updatePersonaDto, user.userId, user.organizationId);
+    const persona = await this.personaService.update(
+      id,
+      updatePersonaDto,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Persona updated successfully',
@@ -106,7 +141,12 @@ export class PersonaController {
     @Body() shareDto: SharePersonaDto,
     @CurrentUser() user: any,
   ) {
-    const permissions = await this.personaService.sharePersona(id, shareDto, user.userId, user.organizationId);
+    const permissions = await this.personaService.sharePersona(
+      id,
+      shareDto,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: `Persona shared with ${permissions.length} user(s)`,
@@ -118,7 +158,11 @@ export class PersonaController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async generatePublicLink(@Param('id') id: string, @CurrentUser() user: any) {
-    const result = await this.personaService.generatePublicLink(id, user.userId, user.organizationId);
+    const result = await this.personaService.generatePublicLink(
+      id,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Public link generated successfully',
@@ -129,8 +173,15 @@ export class PersonaController {
   @Post(':id/generate-link/organization')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async generateOrganizationLink(@Param('id') id: string, @CurrentUser() user: any) {
-    const result = await this.personaService.generateOrganizationLink(id, user.userId, user.organizationId);
+  async generateOrganizationLink(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    const result = await this.personaService.generateOrganizationLink(
+      id,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Organization link generated successfully',
@@ -142,7 +193,11 @@ export class PersonaController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async disablePublicLink(@Param('id') id: string, @CurrentUser() user: any) {
-    await this.personaService.disablePublicLink(id, user.userId, user.organizationId);
+    await this.personaService.disablePublicLink(
+      id,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Public link disabled successfully',
@@ -152,8 +207,15 @@ export class PersonaController {
   @Delete(':id/link/organization')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async disableOrganizationLink(@Param('id') id: string, @CurrentUser() user: any) {
-    await this.personaService.disableOrganizationLink(id, user.userId, user.organizationId);
+  async disableOrganizationLink(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    await this.personaService.disableOrganizationLink(
+      id,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Organization link disabled successfully',
@@ -173,8 +235,15 @@ export class PersonaController {
 
   @Get('org/:token')
   @UseGuards(JwtAuthGuard)
-  async getByOrganizationLink(@Param('token') token: string, @CurrentUser() user: any) {
-    const persona = await this.personaService.getPersonaByOrganizationLink(token, user.userId, user.organizationId);
+  async getByOrganizationLink(
+    @Param('token') token: string,
+    @CurrentUser() user: any,
+  ) {
+    const persona = await this.personaService.getPersonaByOrganizationLink(
+      token,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Persona retrieved successfully',
@@ -190,7 +259,12 @@ export class PersonaController {
     @Body() assignDto: AssignKnowledgeBaseDto,
     @CurrentUser() user: any,
   ) {
-    const assignment = await this.personaService.assignKnowledgeBase(id, assignDto, user.userId, user.organizationId);
+    const assignment = await this.personaService.assignKnowledgeBase(
+      id,
+      assignDto,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Knowledge base assigned successfully',
@@ -206,7 +280,12 @@ export class PersonaController {
     @Param('kbId') kbId: string,
     @CurrentUser() user: any,
   ) {
-    await this.personaService.removeKnowledgeBase(id, kbId, user.userId, user.organizationId);
+    await this.personaService.removeKnowledgeBase(
+      id,
+      kbId,
+      user.userId,
+      user.organizationId,
+    );
     return {
       success: true,
       message: 'Knowledge base removed successfully',

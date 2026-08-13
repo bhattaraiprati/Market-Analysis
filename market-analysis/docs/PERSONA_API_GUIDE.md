@@ -5,6 +5,7 @@
 The Persona API allows you to create AI personas with specific roles, assign knowledge bases, control capabilities, and share personas with team members or publicly.
 
 ## Table of Contents
+
 1. [Create Persona](#1-create-persona)
 2. [List Personas](#2-list-all-personas)
 3. [Get Single Persona](#3-get-single-persona)
@@ -33,6 +34,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 Create a new AI persona with specific role and capabilities.
 
 ### Request
+
 ```http
 POST /personas
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -53,16 +55,17 @@ Content-Type: application/json
 
 ### Parameters
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | ✅ | Persona name (3-255 characters) |
-| `description` | string | ❌ | Detailed description (max 2000 chars) |
-| `primary_focus_role` | enum | ✅ | Role: `sales`, `marketing`, `customer_support`, `product`, `engineering`, `finance`, `operations`, `hr`, `general` |
-| `knowledge_base_ids` | array | ❌ | Array of knowledge base UUIDs to assign |
-| `web_search_enabled` | boolean | ❌ | Enable web search (default: `true`) |
-| `external_data_sources_enabled` | boolean | ❌ | Enable external data access (default: `false`) |
+| Field                           | Type    | Required | Description                                                                                                        |
+| ------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`                          | string  | ✅       | Persona name (3-255 characters)                                                                                    |
+| `description`                   | string  | ❌       | Detailed description (max 2000 chars)                                                                              |
+| `primary_focus_role`            | enum    | ✅       | Role: `sales`, `marketing`, `customer_support`, `product`, `engineering`, `finance`, `operations`, `hr`, `general` |
+| `knowledge_base_ids`            | array   | ❌       | Array of knowledge base UUIDs to assign                                                                            |
+| `web_search_enabled`            | boolean | ❌       | Enable web search (default: `true`)                                                                                |
+| `external_data_sources_enabled` | boolean | ❌       | Enable external data access (default: `false`)                                                                     |
 
 ### Response (201 Created)
+
 ```json
 {
   "success": true,
@@ -122,12 +125,14 @@ Content-Type: application/json
 Get all personas accessible to the current user.
 
 ### Request
+
 ```http
 GET /personas
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -170,6 +175,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 **Filtering Logic:**
+
 - Shows personas created by the user
 - Shows organization-wide personas (`visibility: "organization"`)
 - Shows personas explicitly shared with the user
@@ -181,12 +187,14 @@ Authorization: Bearer YOUR_JWT_TOKEN
 Get detailed information about a specific persona.
 
 ### Request
+
 ```http
 GET /personas/:id
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -248,6 +256,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 Update persona configuration.
 
 ### Request
+
 ```http
 PATCH /personas/:id
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -265,6 +274,7 @@ Content-Type: application/json
 **Note:** All fields are optional. Only include fields you want to update.
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -286,12 +296,14 @@ Content-Type: application/json
 Delete a persona (soft delete).
 
 ### Request
+
 ```http
 DELETE /personas/:id
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -308,6 +320,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 Share a persona with specific users in your organization.
 
 ### Request
+
 ```http
 POST /personas/:id/share
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -326,14 +339,15 @@ Content-Type: application/json
 
 ### Access Levels
 
-| Level | Can Chat | View Config | Edit Config | Add Knowledge | Share | Delete |
-|-------|----------|-------------|-------------|---------------|-------|--------|
-| `viewer` | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `user` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `contributor` | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `co-owner` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Level         | Can Chat | View Config | Edit Config | Add Knowledge | Share | Delete |
+| ------------- | -------- | ----------- | ----------- | ------------- | ----- | ------ |
+| `viewer`      | ❌       | ✅          | ❌          | ❌            | ❌    | ❌     |
+| `user`        | ✅       | ❌          | ❌          | ❌            | ❌    | ❌     |
+| `contributor` | ✅       | ✅          | ❌          | ✅            | ❌    | ❌     |
+| `co-owner`    | ✅       | ✅          | ✅          | ✅            | ✅    | ✅     |
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -360,6 +374,7 @@ Content-Type: application/json
 Generate public or organization-only shareable links.
 
 ### Request - Public Link
+
 ```http
 POST /personas/:id/generate-link
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -371,6 +386,7 @@ Content-Type: application/json
 ```
 
 ### Request - Organization Link
+
 ```http
 POST /personas/:id/generate-link
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -382,6 +398,7 @@ Content-Type: application/json
 ```
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -394,6 +411,7 @@ Content-Type: application/json
 ```
 
 **Link Types:**
+
 - **Public**: Anyone with the link can access (no authentication required)
 - **Organization**: Only members of your organization can access (authentication required)
 
@@ -404,6 +422,7 @@ Content-Type: application/json
 Revoke access via shareable links.
 
 ### Request
+
 ```http
 DELETE /personas/:id/revoke-link/:linkType
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -412,12 +431,14 @@ Authorization: Bearer YOUR_JWT_TOKEN
 **Link Types:** `public` or `organization`
 
 ### Example
+
 ```http
 DELETE /personas/persona-uuid/revoke-link/public
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -432,6 +453,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 Access a shared persona using a link token (public endpoint).
 
 ### Request
+
 ```http
 GET /personas/shared/:token
 ```
@@ -439,6 +461,7 @@ GET /personas/shared/:token
 **Note:** No authentication required for public links. Authentication required for organization links.
 
 ### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -468,6 +491,7 @@ GET /personas/shared/:token
 Assign a knowledge base to a persona.
 
 #### Request
+
 ```http
 POST /personas/:id/knowledge-bases
 Authorization: Bearer YOUR_JWT_TOKEN
@@ -482,6 +506,7 @@ Content-Type: application/json
 **Priority:** 1-10 (higher number = higher priority in search results)
 
 #### Response (201 Created)
+
 ```json
 {
   "success": true,
@@ -506,12 +531,14 @@ Content-Type: application/json
 Remove a knowledge base from a persona.
 
 #### Request
+
 ```http
 DELETE /personas/:id/knowledge-bases/:kbId
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
 #### Response (200 OK)
+
 ```json
 {
   "success": true,
@@ -524,6 +551,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 ## Complete Workflow Example
 
 ### 1. Create Sales Persona
+
 ```bash
 curl -X POST http://localhost:4000/personas \
   -H "Authorization: Bearer TOKEN" \
@@ -538,6 +566,7 @@ curl -X POST http://localhost:4000/personas \
 ```
 
 ### 2. Assign Additional Knowledge Base
+
 ```bash
 curl -X POST http://localhost:4000/personas/PERSONA_ID/knowledge-bases \
   -H "Authorization: Bearer TOKEN" \
@@ -549,6 +578,7 @@ curl -X POST http://localhost:4000/personas/PERSONA_ID/knowledge-bases \
 ```
 
 ### 3. Share with Team
+
 ```bash
 curl -X POST http://localhost:4000/personas/PERSONA_ID/share \
   -H "Authorization: Bearer TOKEN" \
@@ -560,6 +590,7 @@ curl -X POST http://localhost:4000/personas/PERSONA_ID/share \
 ```
 
 ### 4. Generate Organization Link
+
 ```bash
 curl -X POST http://localhost:4000/personas/PERSONA_ID/generate-link \
   -H "Authorization: Bearer TOKEN" \
@@ -570,6 +601,7 @@ curl -X POST http://localhost:4000/personas/PERSONA_ID/generate-link \
 ```
 
 ### 5. Update Capabilities
+
 ```bash
 curl -X PATCH http://localhost:4000/personas/PERSONA_ID \
   -H "Authorization: Bearer TOKEN" \
@@ -585,17 +617,17 @@ curl -X PATCH http://localhost:4000/personas/PERSONA_ID \
 ## Error Responses
 
 ### 400 Bad Request
+
 ```json
 {
   "statusCode": 400,
-  "message": [
-    "primary_focus_role must be a valid enum value"
-  ],
+  "message": ["primary_focus_role must be a valid enum value"],
   "error": "Bad Request"
 }
 ```
 
 ### 403 Forbidden
+
 ```json
 {
   "statusCode": 403,
@@ -604,6 +636,7 @@ curl -X PATCH http://localhost:4000/personas/PERSONA_ID \
 ```
 
 ### 404 Not Found
+
 ```json
 {
   "statusCode": 404,
@@ -629,6 +662,38 @@ curl -X PATCH http://localhost:4000/personas/PERSONA_ID \
 Once a persona is created, it can be used in conversations:
 
 ```javascript
+// When the user opens a new chat, load four persona-aware starter prompts.
+GET /personas/{persona-id}/recommended-prompts
+
+// Response:
+{
+  "success": true,
+  "message": "Recommended prompts generated successfully",
+  "data": [
+    {
+      "icon": "query_stats",
+      "title": "Review customer signals",
+      "prompt": "Analyze recent customer feedback and summarize the strongest recurring product problems."
+    },
+    {
+      "icon": "architecture",
+      "title": "Plan validation",
+      "prompt": "Create a validation plan for our highest-priority product assumption."
+    },
+    {
+      "icon": "group_add",
+      "title": "Find unmet needs",
+      "prompt": "Identify unmet customer needs and rank the best opportunities to investigate."
+    },
+    {
+      "icon": "history_edu",
+      "title": "Draft a product brief",
+      "prompt": "Draft a concise product brief based on the most important customer research themes."
+    }
+  ],
+  "count": 4
+}
+
 // Selecting a persona does not create a conversation. The conversation is
 // created only when the user submits the first message.
 POST /conversations
@@ -650,9 +715,16 @@ POST /conversations/{conversation-id}/messages
 // 4. Return contextual response
 ```
 
+Recommendations use the persona's role and description, assigned knowledge-base
+metadata and filenames, and up to 16 recent user messages from that user's last
+10 conversations with the persona. They do not retrieve or send full knowledge-base
+document text. If generation is unavailable or returns invalid data, the endpoint
+returns four role-specific fallback prompts, so the UI can always render four cards.
+
 ---
 
 For more details on the overall system architecture, see:
+
 - `docs/END_USER_FLOW.md` - Complete user journey
 - `docs/SYSTEM_DATA_FLOW.md` - Technical data flow
 - `docs/DATABASE_DESIGN.md` - Database schema
