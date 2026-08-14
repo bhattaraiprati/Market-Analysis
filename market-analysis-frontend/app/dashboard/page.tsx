@@ -1,17 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { personaApi } from '@/lib/api/persona';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useConversationStore } from '@/lib/stores/conversationStore';
+import type { RecommendedPrompt } from '@/types/api';
 import { useDashboardChat } from './components/DashboardChatContext';
 import { MarkdownMessage } from './components/MarkdownMessage';
-
-const starterPrompts = [
-  { icon: 'query_stats', title: 'Analyze competitors', prompt: 'Analyze our current competitors and summarize their strengths.' },
-  { icon: 'architecture', title: 'Plan a project', prompt: 'Help me scope a new project with objectives, risks, and milestones.' },
-  { icon: 'group_add', title: 'Find opportunities', prompt: 'Identify the strongest growth opportunities for our organization.' },
-  { icon: 'history_edu', title: 'Draft a brief', prompt: 'Draft a concise strategic brief using the available knowledge.' },
-];
 
 export default function DashboardPage() {
   const { user, organization } = useAuthStore();
@@ -29,8 +24,15 @@ export default function DashboardPage() {
   } = useConversationStore();
   const [content, setContent] = useState('');
   const [selectionError, setSelectionError] = useState('');
+  const [recommendedPromptsState, setRecommendedPromptsState] = useState<{
+    personaId: string;
+    prompts: RecommendedPrompt[];
+    error: string;
+  }>({ personaId: '', prompts: [], error: '' });
+  const [recommendedPromptsRetry, setRecommendedPromptsRetry] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const submissionLockRef = useRef(false);
+  const recommendedPromptsRequestRef = useRef(0);
   const hasPendingResponse = Boolean(
     currentConversation?.messages.some(
       (message) =>
@@ -38,10 +40,48 @@ export default function DashboardPage() {
     )
   );
   const isAwaitingResponse = isSending || hasPendingResponse;
+  const selectedPersonaId = selectedPersona?.id ?? '';
+  const hasRecommendationsForSelectedPersona =
+    recommendedPromptsState.personaId === selectedPersonaId;
+  const recommendedPrompts = hasRecommendationsForSelectedPersona
+    ? recommendedPromptsState.prompts
+    : [];
+  const recommendedPromptsError = hasRecommendationsForSelectedPersona
+    ? recommendedPromptsState.error
+    : '';
+  const isLoadingRecommendedPrompts = Boolean(
+    selectedPersonaId && !hasRecommendationsForSelectedPersona
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentConversation?.messages]);
+
+  useEffect(() => {
+    const requestId = ++recommendedPromptsRequestRef.current;
+    if (!selectedPersonaId) return;
+
+    personaApi.getRecommendedPrompts(selectedPersonaId)
+      .then((response) => {
+        if (requestId === recommendedPromptsRequestRef.current) {
+          setRecommendedPromptsState({
+            personaId: selectedPersonaId,
+            prompts: response.data ?? [],
+            error: '',
+          });
+        }
+      })
+      .catch((promptError) => {
+        if (requestId === recommendedPromptsRequestRef.current) {
+          setRecommendedPromptsState({
+            personaId: selectedPersonaId,
+            prompts: [],
+            error: 'Unable to load recommended prompts. Please try again.',
+          });
+          console.error('Failed to load recommended prompts:', promptError);
+        }
+      });
+  }, [recommendedPromptsRetry, selectedPersonaId]);
 
   useEffect(() => {
     if (!currentConversation || !hasPendingResponse) return;
@@ -154,24 +194,64 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
-            {starterPrompts.map((starter) => (
+          {selectedPersona && isLoadingRecommendedPrompts && (
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Loading recommended prompts">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[90px] animate-pulse rounded-xl border bg-white"
+                  style={{ borderColor: '#dce5e4' }}
+                />
+              ))}
+            </div>
+          )}
+
+          {selectedPersona && !isLoadingRecommendedPrompts && recommendedPromptsError && (
+            <div className="w-full rounded-xl border bg-white p-5 text-center" style={{ borderColor: '#dce5e4' }}>
+              <p className="text-sm" style={{ color: '#93000a' }}>{recommendedPromptsError}</p>
               <button
-                key={starter.title}
                 type="button"
-                disabled={isAwaitingResponse}
-                onClick={() => setContent(starter.prompt)}
-                className="flex items-start gap-3 rounded-xl border bg-white p-4 text-left transition-all hover:border-[#1a7070] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ borderColor: '#dce5e4' }}
+                onClick={() => {
+                  setRecommendedPromptsState({ personaId: '', prompts: [], error: '' });
+                  setRecommendedPromptsRetry((retry) => retry + 1);
+                }}
+                className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold"
+                style={{ backgroundColor: '#dff3f2', color: '#005657' }}
               >
-                <span className="material-symbols-outlined rounded-lg p-2" style={{ backgroundColor: '#eef7f7', color: '#1a7070' }}>{starter.icon}</span>
-                <span>
-                  <span className="block text-sm font-semibold" style={{ color: '#0b1c30' }}>{starter.title}</span>
-                  <span className="mt-1 block text-xs leading-5" style={{ color: '#6f7979' }}>{starter.prompt}</span>
-                </span>
+                Try again
               </button>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {selectedPersona && !isLoadingRecommendedPrompts && !recommendedPromptsError && recommendedPrompts.length === 0 && (
+            <p className="text-sm" style={{ color: '#6f7979' }}>
+              No recommended prompts are available for this persona yet.
+            </p>
+          )}
+
+          {selectedPersona && !isLoadingRecommendedPrompts && recommendedPrompts.length > 0 && (
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+              {recommendedPrompts.map((starter, index) => (
+                <button
+                  key={`${starter.title}-${index}`}
+                  type="button"
+                  disabled={isAwaitingResponse}
+                  onClick={() => {
+                    setContent(starter.prompt);
+                    setSelectionError('');
+                  }}
+                  className="flex items-start gap-3 rounded-xl border bg-white p-4 text-left transition-all hover:border-[#1a7070] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ borderColor: '#dce5e4' }}
+                >
+                  <span className="material-symbols-outlined rounded-lg p-2" aria-hidden="true" style={{ backgroundColor: '#eef7f7', color: '#1a7070' }}>{starter.icon}</span>
+                  <span>
+                    <span className="block text-sm font-semibold" style={{ color: '#0b1c30' }}>{starter.title}</span>
+                    <span className="mt-1 block text-xs leading-5" style={{ color: '#6f7979' }}>{starter.prompt}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

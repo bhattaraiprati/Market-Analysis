@@ -1,7 +1,32 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User, Organization, RegisterDto, LoginDto, CreateOrganizationDto } from '@/types/api';
+import {
+  User,
+  Organization,
+  RegisterDto,
+  LoginDto,
+  CreateOrganizationDto,
+} from '@/types/api';
 import { authApi } from '../api/auth';
+
+type ApiRequestError = {
+  response?: {
+    data?: {
+      message?: string | string[];
+    };
+  };
+};
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const message = (error as ApiRequestError).response?.data?.message;
+
+  if (Array.isArray(message)) return message[0] || fallback;
+  if (message) return message;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+let organizationRequestSequence = 0;
 
 interface AuthState {
   // State
@@ -10,12 +35,15 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  isOrganizationLoading: boolean;
+  organizationError: string | null;
 
   // Actions
   register: (data: RegisterDto) => Promise<void>;
   login: (data: LoginDto) => Promise<void>;
   logout: () => void;
   loadProfile: () => Promise<void>;
+  loadOrganization: () => Promise<void>;
   createOrganization: (data: CreateOrganizationDto) => Promise<void>;
   clearError: () => void;
   checkAuth: () => Promise<boolean>;
@@ -30,23 +58,21 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      isOrganizationLoading: false,
+      organizationError: null,
 
       // Register
       register: async (data: RegisterDto) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await authApi.register(data);
+          await authApi.register(data);
           // After registration, user needs to login
           set({
             isLoading: false,
             error: null,
           });
-        } catch (error: any) {
-          const errorMessage =
-            error.response?.data?.message ||
-            (Array.isArray(error.response?.data?.message)
-              ? error.response?.data?.message[0]
-              : 'Registration failed');
+        } catch (error) {
+          const errorMessage = getApiErrorMessage(error, 'Registration failed');
           set({
             isLoading: false,
             error: errorMessage,
@@ -86,9 +112,8 @@ export const useAuthStore = create<AuthState>()(
           }
 
           set({ isLoading: false });
-        } catch (error: any) {
-          const errorMessage =
-            error.response?.data?.message || 'Invalid email or password';
+        } catch (error) {
+          const errorMessage = getApiErrorMessage(error, 'Invalid email or password');
           set({
             isLoading: false,
             error: errorMessage,
@@ -101,6 +126,7 @@ export const useAuthStore = create<AuthState>()(
 
       // Logout
       logout: () => {
+        organizationRequestSequence += 1;
         authApi.logout();
         localStorage.removeItem('access_token');
         set({
@@ -108,6 +134,8 @@ export const useAuthStore = create<AuthState>()(
           organization: null,
           isAuthenticated: false,
           error: null,
+          isOrganizationLoading: false,
+          organizationError: null,
         });
       },
 
@@ -129,18 +157,86 @@ export const useAuthStore = create<AuthState>()(
             } as Organization;
           }
 
+          // The profile summary currently resolves organizations for owners.
+          // Use the member-aware endpoint as a fallback for active members.
+          if (!organization) {
+            try {
+              organization = await authApi.getOrganization();
+            } catch {
+              // A user without an organization is handled by AuthProvider.
+            }
+          }
+
           set({
             user: profile.user,
             organization: organization,
             isAuthenticated: true,
             isLoading: false,
           });
-        } catch (error: any) {
+        } catch (error) {
           set({
             isLoading: false,
             isAuthenticated: false,
             user: null,
             organization: null,
+          });
+          throw error;
+        }
+      },
+
+      // Load the complete public organization profile without blocking auth UI
+      loadOrganization: async () => {
+        const requestUserId = get().user?.id;
+        if (
+          get().isOrganizationLoading ||
+          !get().isAuthenticated ||
+          !requestUserId ||
+          !get().organization
+        ) {
+          return;
+        }
+
+        const requestId = ++organizationRequestSequence;
+        set({ isOrganizationLoading: true });
+        try {
+          const organization = await authApi.getOrganization();
+          const currentState = get();
+
+          if (
+            requestId !== organizationRequestSequence ||
+            !currentState.isAuthenticated ||
+            currentState.user?.id !== requestUserId
+          ) {
+            return;
+          }
+
+          set({
+            organization: {
+              ...organization,
+              ...(currentState.organization?.memberRole
+                ? { memberRole: currentState.organization.memberRole }
+                : {}),
+            },
+            isOrganizationLoading: false,
+            organizationError: null,
+          });
+        } catch (error) {
+          const currentState = get();
+
+          if (
+            requestId !== organizationRequestSequence ||
+            !currentState.isAuthenticated ||
+            currentState.user?.id !== requestUserId
+          ) {
+            return;
+          }
+
+          set({
+            isOrganizationLoading: false,
+            organizationError: getApiErrorMessage(
+              error,
+              'Failed to fetch organization details'
+            ),
           });
           throw error;
         }
@@ -152,13 +248,19 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await authApi.createOrganization(data);
           set({
-            organization: response.organization,
+            // Keep every onboarding field available immediately, even when the
+            // create endpoint responds with only the organization's core fields.
+            organization: {
+              ...data,
+              ...response.organization,
+              memberRole: 'OWNER',
+            },
             isLoading: false,
             error: null,
+            organizationError: null,
           });
-        } catch (error: any) {
-          const errorMessage =
-            error.response?.data?.message || 'Failed to create organization';
+        } catch (error) {
+          const errorMessage = getApiErrorMessage(error, 'Failed to create organization');
           set({
             isLoading: false,
             error: errorMessage,
@@ -175,10 +277,13 @@ export const useAuthStore = create<AuthState>()(
       // Check authentication status
       checkAuth: async () => {
         if (!authApi.hasToken()) {
+          organizationRequestSequence += 1;
           set({
             isAuthenticated: false,
             user: null,
             organization: null,
+            isOrganizationLoading: false,
+            organizationError: null,
           });
           return false;
         }
@@ -186,11 +291,14 @@ export const useAuthStore = create<AuthState>()(
         try {
           await get().loadProfile();
           return true;
-        } catch (error) {
+        } catch {
+          organizationRequestSequence += 1;
           set({
             isAuthenticated: false,
             user: null,
             organization: null,
+            isOrganizationLoading: false,
+            organizationError: null,
           });
           return false;
         }

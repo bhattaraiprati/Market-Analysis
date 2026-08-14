@@ -55,8 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, organization, pathname, router, isChecking, isLoading]);
 
-  // Show loading state while checking auth
-  if (isChecking || isLoading) {
+  // Only replace the route tree during the initial auth bootstrap. Login and
+  // registration pages render their own action-specific loading states.
+  if (isChecking) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"

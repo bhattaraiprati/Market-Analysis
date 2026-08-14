@@ -8,6 +8,8 @@ import {
   CreateOrganizationDto,
   ApiResponse,
   Organization,
+  OrganizationDetailsResponse,
+  CreateOrganizationResponse,
 } from '@/types/api';
 
 export const authApi = {
@@ -76,11 +78,25 @@ export const authApi = {
 
   // Create organization
   createOrganization: async (data: CreateOrganizationDto) => {
-    const response = await axiosInstance.post<{
-      message: string;
-      organization: Organization;
-    }>('/auth/organization', data);
+    const response = await axiosInstance.post<CreateOrganizationResponse>(
+      '/auth/organization',
+      data
+    );
     return response.data;
+  },
+
+  // Get the organization details supplied during registration
+  getOrganization: async () => {
+    const response = await axiosInstance.get<OrganizationDetailsResponse>(
+      '/auth/organization'
+    );
+    const responseBody = response.data;
+
+    if (!responseBody.success || !responseBody.data) {
+      throw new Error(responseBody.message || 'Failed to fetch organization details');
+    }
+
+    return responseBody.data;
   },
 
   // Check if user has token

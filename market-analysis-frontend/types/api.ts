@@ -5,30 +5,75 @@ export interface User {
   email: string;
   role?: string;
   profilePicture?: string;
-  organizationId?: string;
-  organizationName?: string;
-  organizationStatus?: string;
+  organizationId?: string | null;
+  organizationName?: string | null;
+  organizationStatus?: OrganizationStatus | null;
   organization?: Organization | null;
   isVerified?: boolean;
   status?: string;
   created_at?: string;
 }
 
+export type OrganizationStatus =
+  | 'PENDING_APPROVAL'
+  | 'ACTIVE'
+  | 'REJECTED'
+  | 'SUSPENDED';
+
+export type OrganizationMemberRole =
+  | 'OWNER'
+  | 'ADMIN'
+  | 'MANAGER'
+  | 'MEMBER'
+  | 'VIEWER';
+
+/** Organization data shared by auth summary and creation responses. */
 export interface Organization {
   id: string;
   name: string;
   industry: string;
-  description?: string;
-  website?: string;
+  description?: string | null;
+  website?: string | null;
   product_or_service?: string;
   target_customers?: string;
   business_goals?: string;
-  current_challenges?: string;
-  known_competitors?: string[];
-  company_size?: string;
-  location?: string;
-  owner_id: string;
+  current_challenges?: string | null;
+  known_competitors?: string[] | null;
+  company_size?: string | null;
+  location?: string | null;
+  owner_id?: string;
   created_at?: string;
+  status?: OrganizationStatus;
+  memberRole?: OrganizationMemberRole;
+}
+
+/** Public organization profile returned by GET /auth/organization. */
+export interface OrganizationDetails extends Organization {
+  description: string | null;
+  website: string | null;
+  product_or_service: string;
+  target_customers: string;
+  business_goals: string;
+  current_challenges: string | null;
+  known_competitors: string[] | null;
+  company_size: string | null;
+  location: string | null;
+  status: OrganizationStatus;
+}
+
+export interface OrganizationDetailsResponse {
+  success: boolean;
+  message: string;
+  data: OrganizationDetails;
+}
+
+export interface CreateOrganizationResponse {
+  message: string;
+  organization: {
+    id: string;
+    name: string;
+    status: OrganizationStatus;
+  };
 }
 
 export interface AuthResponse {
@@ -169,6 +214,12 @@ export type PersonaStatus = 'active' | 'draft' | 'archived';
 
 export interface UpdatePersonaDto extends Partial<CreatePersonaDto> {
   status?: PersonaStatus;
+}
+
+export interface RecommendedPrompt {
+  icon: string;
+  title: string;
+  prompt: string;
 }
 
 // Conversation Types

@@ -524,7 +524,18 @@ export default function KnowledgeBaseDetailPage() {
                 return (
                   <div key={file.id} className="p-6 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4 flex-1">
+                      <Link
+                        href={file.storage_url || '#'}
+                        target={file.storage_url ? '_blank' : undefined}
+                        rel={file.storage_url ? 'noopener noreferrer' : undefined}
+                        onClick={(event) => {
+                          if (!file.storage_url) event.preventDefault();
+                        }}
+                        className="flex flex-1 items-start gap-4 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a7070]"
+                        aria-label={file.storage_url
+                          ? `Open ${file.original_filename} in a new tab`
+                          : `${file.original_filename} is unavailable`}
+                      >
                         <div
                           className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
                           style={{ backgroundColor: '#e5eeff' }}
@@ -566,10 +577,14 @@ export default function KnowledgeBaseDetailPage() {
                             </span>
                           </div>
                         </div>
-                      </div>
+                        <span className="material-symbols-outlined self-center" style={{ color: '#6f7979' }}>
+                          {file.storage_url ? 'open_in_new' : 'link_off'}
+                        </span>
+                      </Link>
                       <button
                         onClick={() => setDeleteFileId(file.id)}
-                        className="p-2 rounded-lg transition-colors"
+                        className="ml-3 p-2 rounded-lg transition-colors"
+                        aria-label={`Delete ${file.original_filename}`}
                         style={{ color: '#c00' }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fee')}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}

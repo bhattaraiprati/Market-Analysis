@@ -4,6 +4,7 @@ import {
   CreatePersonaDto,
   UpdatePersonaDto,
   ApiResponse,
+  RecommendedPrompt,
 } from '@/types/api';
 
 export const personaApi = {
@@ -22,6 +23,14 @@ export const personaApi = {
   // Get persona by ID
   getById: async (id: string) => {
     const response = await axiosInstance.get<ApiResponse<Persona>>(`/personas/${id}`);
+    return response.data;
+  },
+
+  // Get personalized starter prompts for a persona
+  getRecommendedPrompts: async (id: string) => {
+    const response = await axiosInstance.get<ApiResponse<RecommendedPrompt[]>>(
+      `/personas/${id}/recommended-prompts`
+    );
     return response.data;
   },
 

@@ -18,6 +18,7 @@ const navigationItems = [
 
 export function DashboardSidebar({ isOpen, onClose, onLogout }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const isProfileActive = pathname.startsWith('/dashboard/profile');
 
   const logout = () => {
     onLogout();
@@ -105,16 +106,26 @@ export function DashboardSidebar({ isOpen, onClose, onLogout }: DashboardSidebar
           <Link
             href="/dashboard/profile"
             onClick={onClose}
-            className="flex items-center gap-3 py-3 text-sm font-medium transition-colors hover:text-[#005657]"
-            style={{ color: '#3f4948' }}
+            aria-current={isProfileActive ? 'page' : undefined}
+            className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:text-[#005657]"
+            style={{
+              color: isProfileActive ? '#005657' : '#3f4948',
+              backgroundColor: isProfileActive ? 'rgba(163, 237, 236, 0.3)' : 'transparent',
+              fontWeight: isProfileActive ? '600' : '500',
+            }}
           >
-            <span className="material-symbols-outlined">account_circle</span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontVariationSettings: isProfileActive ? "'FILL' 1" : "'FILL' 0" }}
+            >
+              account_circle
+            </span>
             Profile
           </Link>
           <button
             type="button"
-            onClick={onLogout}
-            className="flex w-full items-center gap-3 py-3 text-left text-sm font-medium transition-colors hover:text-[#005657]"
+            onClick={logout}
+            className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm font-medium transition-colors hover:text-[#005657]"
             style={{ color: '#3f4948' }}
           >
             <span className="material-symbols-outlined">logout</span>
