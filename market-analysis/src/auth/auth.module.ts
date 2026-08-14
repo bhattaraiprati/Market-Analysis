@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { User } from '../models/user.model';
 import { Organization } from '../models/organization.model';
 import { OrganizationMember } from '../models/organizationMember.model';
+import { CompanyIngestionModule } from '../company-ingestion/company-ingestion.module';
 
 @Module({
   imports: [
@@ -19,7 +20,10 @@ import { OrganizationMember } from '../models/organizationMember.model';
       useFactory: (configService: ConfigService) => {
         const expiresIn = configService.get<string>('JWT_EXPIRES_IN', '5h');
         return {
-          secret: configService.get<string>('JWT_SECRET', 'your-secret-key-change-in-production'),
+          secret: configService.get<string>(
+            'JWT_SECRET',
+            'your-secret-key-change-in-production',
+          ),
           signOptions: {
             expiresIn: expiresIn as any,
           },
@@ -27,6 +31,7 @@ import { OrganizationMember } from '../models/organizationMember.model';
       },
     }),
     SequelizeModule.forFeature([User, Organization, OrganizationMember]),
+    CompanyIngestionModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

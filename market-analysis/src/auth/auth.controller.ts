@@ -8,7 +8,12 @@ import {
   HttpStatus,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -52,7 +57,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 403, description: 'Account not active or email not verified' })
+  @ApiResponse({
+    status: 403,
+    description: 'Account not active or email not verified',
+  })
   async login(
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
     loginDto: LoginDto,
@@ -70,7 +78,10 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create organization' })
-  @ApiResponse({ status: 201, description: 'Organization successfully created' })
+  @ApiResponse({
+    status: 201,
+    description: 'Organization successfully created',
+  })
   @ApiResponse({ status: 409, description: 'User already has an organization' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async createOrganization(
@@ -79,6 +90,50 @@ export class AuthController {
     createOrgDto: CreateOrganizationDto,
   ) {
     return this.authService.createOrganization(userId, createOrgDto);
+  }
+
+  /**
+   * @route GET /auth/organization
+   * @desc Get the organization details supplied during registration
+   * @access Private (Authenticated organization members only)
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('organization')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get registered organization details' })
+  @ApiResponse({
+    status: 200,
+    description: 'Organization details retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
+  async getOrganization(
+    @CurrentUser('organizationId') organizationId: string | null,
+  ) {
+    const organization =
+      await this.authService.getOrganizationDetails(organizationId);
+
+    return {
+      success: true,
+      message: 'Organization details retrieved successfully',
+      data: organization,
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('organization/company-profile')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Start or retry company website ingestion' })
+  async retryCompanyWebsiteIngestion(@CurrentUser('userId') userId: string) {
+    const ingestion =
+      await this.authService.retryCompanyWebsiteIngestion(userId);
+    return {
+      success: true,
+      message: 'Company website ingestion request accepted',
+      data: ingestion,
+    };
   }
 
   /**

@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
- 
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { KnowledgeBase, KnowledgeBaseStatus } from '../models/knowledge-base.model';
+import {
+  KnowledgeBase,
+  KnowledgeBaseStatus,
+} from '../models/knowledge-base.model';
 import { KBFile, FileProcessingStatus } from '../models/kb-file.model';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
@@ -102,10 +104,7 @@ export class KnowledgeBaseService {
   /**
    * Get a single knowledge base by ID
    */
-  async findOne(
-    id: string,
-    organizationId: string,
-  ): Promise<KnowledgeBase> {
+  async findOne(id: string, organizationId: string): Promise<KnowledgeBase> {
     try {
       const knowledgeBase = await this.knowledgeBaseModel.findOne({
         where: {
@@ -121,9 +120,7 @@ export class KnowledgeBaseService {
       });
 
       if (!knowledgeBase) {
-        throw new NotFoundException(
-          `Knowledge base with ID ${id} not found`,
-        );
+        throw new NotFoundException(`Knowledge base with ID ${id} not found`);
       }
 
       return knowledgeBase;
@@ -209,10 +206,7 @@ export class KnowledgeBaseService {
   ): Promise<KBFile> {
     try {
       // Verify knowledge base exists and belongs to organization
-      const knowledgeBase = await this.findOne(
-        knowledgeBaseId,
-        organizationId,
-      );
+      const knowledgeBase = await this.findOne(knowledgeBaseId, organizationId);
 
       const folder = this.cloudinaryService.getKnowledgeBaseFolder(
         organizationId,
@@ -276,6 +270,134 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Attach an already-uploaded generated document and index its source text.
+   * This avoids downloading and re-extracting text that the application has
+   * just generated, while preserving the same KB/file records as user uploads.
+   */
+  async ingestGeneratedDocument(
+    knowledgeBaseId: string,
+    organizationId: string,
+    document: {
+      publicId: string;
+      secureUrl: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      text: string;
+      metadata?: Record<string, any>;
+      vectorMetadata?: Record<string, any>;
+    },
+  ): Promise<KBFile> {
+    const knowledgeBase = await this.findOne(knowledgeBaseId, organizationId);
+    const cleanedText = this.fileProcessorService.cleanText(document.text);
+    if (!this.fileProcessorService.isValidText(cleanedText)) {
+      throw new BadRequestException('Generated document text is too short');
+    }
+
+    const kbFile = await this.kbFileModel.create({
+      knowledge_base_id: knowledgeBaseId,
+      original_filename: document.filename,
+      file_type: '.pdf',
+      file_size_bytes: document.sizeBytes,
+      mime_type: document.mimeType,
+      storage_path: document.publicId,
+      storage_url: document.secureUrl,
+      storage_provider: 'cloudinary',
+      processing_status: FileProcessingStatus.PROCESSING,
+      extracted_text: cleanedText.substring(0, 10000),
+      extracted_metadata: {
+        ...(document.metadata ?? {}),
+        extractionMethod: 'application-generated',
+      },
+    });
+
+    await knowledgeBase.update({
+      status: KnowledgeBaseStatus.PROCESSING,
+      indexing_status: 'processing',
+      total_documents: knowledgeBase.total_documents + 1,
+    });
+
+    try {
+      await this.indexText(
+        kbFile,
+        knowledgeBase,
+        organizationId,
+        cleanedText,
+        document.vectorMetadata,
+      );
+      return kbFile.reload();
+    } catch (error) {
+      await kbFile.update({
+        processing_status: FileProcessingStatus.FAILED,
+        processing_error:
+          error instanceof Error ? error.message : String(error),
+      });
+      await knowledgeBase.update({
+        status: KnowledgeBaseStatus.ERROR,
+        indexing_status: 'failed',
+      });
+      throw error;
+    }
+  }
+
+  private async indexText(
+    kbFile: KBFile,
+    knowledgeBase: KnowledgeBase,
+    organizationId: string,
+    cleanedText: string,
+    extraMetadata: Record<string, any> = {},
+  ): Promise<void> {
+    const chunks = this.fileProcessorService.chunkText(cleanedText, 512, 50);
+    if (chunks.length === 0) throw new Error('No chunks generated from text');
+
+    const embeddings = await this.embeddingService.generateEmbeddingsBatch(
+      chunks.map((chunk) => chunk.text),
+      32,
+    );
+    const safeMetadata = Object.fromEntries(
+      Object.entries(extraMetadata).filter(
+        ([, value]) =>
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean' ||
+          (Array.isArray(value) &&
+            value.every((item) => typeof item === 'string')),
+      ),
+    );
+    const vectors = embeddings.map((embedding, index) => ({
+      id: `${kbFile.id}_chunk_${index}`,
+      values: embedding,
+      metadata: {
+        organization_id: organizationId,
+        knowledge_base_id: knowledgeBase.id,
+        file_id: kbFile.id,
+        chunk_index: index,
+        original_text: chunks[index].text,
+        file_name: kbFile.original_filename,
+        file_type: kbFile.file_type,
+        source_type: 'web' as const,
+        timestamp: new Date().toISOString(),
+        ...safeMetadata,
+      },
+    }));
+
+    await this.pineconeService.upsertVectors(vectors, organizationId);
+    await kbFile.update({
+      processing_status: FileProcessingStatus.COMPLETED,
+      processed_at: new Date(),
+      chunk_count: chunks.length,
+      indexed: true,
+      indexed_at: new Date(),
+    });
+    await knowledgeBase.update({
+      status: KnowledgeBaseStatus.ACTIVE,
+      total_chunks: knowledgeBase.total_chunks + chunks.length,
+      indexed_at: new Date(),
+      indexing_status: 'completed',
+    });
+  }
+
+  /**
    * Process file asynchronously (extract, chunk, embed, store)
    */
   private async processFileAsync(
@@ -292,7 +414,9 @@ export class KnowledgeBaseService {
       }
 
       // Update status to processing
-      await kbFile.update({ processing_status: FileProcessingStatus.PROCESSING });
+      await kbFile.update({
+        processing_status: FileProcessingStatus.PROCESSING,
+      });
 
       // Download file temporarily
       const tempFilePath = await this.downloadFile(fileUrl, fileId);
@@ -333,9 +457,7 @@ export class KnowledgeBaseService {
         }
 
         // Generate embeddings
-        this.logger.log(
-          `Generating embeddings for ${chunks.length} chunks`,
-        );
+        this.logger.log(`Generating embeddings for ${chunks.length} chunks`);
         const chunkTexts = chunks.map((chunk) => chunk.text);
         const embeddings = await this.embeddingService.generateEmbeddingsBatch(
           chunkTexts,
@@ -373,9 +495,8 @@ export class KnowledgeBaseService {
         });
 
         // Update knowledge base stats
-        const knowledgeBase = await this.knowledgeBaseModel.findByPk(
-          knowledgeBaseId,
-        );
+        const knowledgeBase =
+          await this.knowledgeBaseModel.findByPk(knowledgeBaseId);
         if (knowledgeBase) {
           await knowledgeBase.update({
             total_chunks: knowledgeBase.total_chunks + chunks.length,
@@ -423,7 +544,8 @@ export class KnowledgeBaseService {
       const { knowledgeBaseIds, topK = 10, minScore = 0.7 } = options;
 
       // Generate query embedding
-      const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+      const queryEmbedding =
+        await this.embeddingService.generateEmbedding(query);
 
       // Query Pinecone with organization isolation
       const results = await this.pineconeService.queryVectors(
@@ -448,10 +570,7 @@ export class KnowledgeBaseService {
   /**
    * Get file statistics for a knowledge base
    */
-  async getFileStatistics(
-    knowledgeBaseId: string,
-    organizationId: string,
-  ) {
+  async getFileStatistics(knowledgeBaseId: string, organizationId: string) {
     try {
       await this.findOne(knowledgeBaseId, organizationId);
 
@@ -459,10 +578,7 @@ export class KnowledgeBaseService {
         where: { knowledge_base_id: knowledgeBaseId },
         attributes: [
           'processing_status',
-          [
-            this.kbFileModel.sequelize!.fn('COUNT', '*'),
-            'count',
-          ],
+          [this.kbFileModel.sequelize!.fn('COUNT', '*'), 'count'],
         ],
         group: ['processing_status'],
         raw: true,

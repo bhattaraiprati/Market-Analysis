@@ -155,6 +155,35 @@ GET /auth/profile
 Authorization: Bearer <token>
 ```
 
+#### Get Organization Details
+```http
+GET /auth/organization
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Organization details retrieved successfully",
+  "data": {
+    "id": "uuid",
+    "name": "Tech Startup Inc",
+    "description": "Innovative SaaS company",
+    "industry": "Software Development",
+    "website": "https://techstartup.com",
+    "product_or_service": "We provide AI-powered business intelligence tools",
+    "target_customers": "Small to medium-sized businesses in the tech sector",
+    "business_goals": "Achieve 1000 paying customers by Q4 2024",
+    "current_challenges": "Limited market visibility and customer acquisition",
+    "known_competitors": ["Competitor A", "Competitor B"],
+    "company_size": "10-50 employees",
+    "location": "San Francisco, CA",
+    "status": "ACTIVE"
+  }
+}
+```
+
 #### Verify Token
 ```http
 GET /auth/me

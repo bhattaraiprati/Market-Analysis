@@ -9,12 +9,10 @@ import { PineconeService } from './services/pinecone.service';
 import { EmbeddingService } from './services/embedding.service';
 import { FileProcessorService } from './services/file-processor.service';
 import { CloudinaryService } from './services/cloudinary.service';
+import { PdfDocumentService } from './services/pdf-document.service';
 
 @Module({
-  imports: [
-    SequelizeModule.forFeature([KnowledgeBase, KBFile]),
-    ConfigModule,
-  ],
+  imports: [SequelizeModule.forFeature([KnowledgeBase, KBFile]), ConfigModule],
   controllers: [KnowledgeBaseController],
   providers: [
     KnowledgeBaseService,
@@ -22,11 +20,13 @@ import { CloudinaryService } from './services/cloudinary.service';
     EmbeddingService,
     FileProcessorService,
     CloudinaryService,
+    PdfDocumentService,
   ],
   exports: [
     KnowledgeBaseService,
     PineconeService,
     EmbeddingService,
+    PdfDocumentService,
   ],
 })
 export class KnowledgeBaseModule {}
