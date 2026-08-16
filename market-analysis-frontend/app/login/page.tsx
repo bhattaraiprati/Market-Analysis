@@ -102,7 +102,7 @@ export default function LoginPage() {
           {/* Brand Section */}
           <div className="flex flex-col items-center mb-8">
             <div className="flex items-center gap-2 mb-1">
-              <span
+              {/* <span
                 className="material-symbols-outlined text-[40px]"
                 style={{
                   fontVariationSettings: "'FILL' 1",
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 }}
               >
                 smart_toy
-              </span>
+              </span> */}
               <h1
                 className="text-2xl font-semibold tracking-tight"
                 style={{
@@ -329,7 +329,7 @@ export default function LoginPage() {
                   color: '#3f4948'
                 }}
               >
-                Keep me signed in for 30 days
+                Keep me signed in
               </label>
             </div>
 

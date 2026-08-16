@@ -1,13 +1,13 @@
 import { axiosInstance } from './client';
 import {
   ResearchJob,
+  ResearchSource,
   StartResearchDto,
-  ApiResponse,
 } from '@/types/api';
 
 export const researchApi = {
   // Start new research job
-  start: async (data: StartResearchDto) => {
+  start: async (data: StartResearchDto): Promise<ResearchJob> => {
     const response = await axiosInstance.post<ResearchJob>(
       '/research/start',
       data
@@ -16,7 +16,7 @@ export const researchApi = {
   },
 
   // Get all research jobs
-  getAll: async () => {
+  getAll: async (): Promise<{ jobs: ResearchJob[] }> => {
     const response = await axiosInstance.get<{ jobs: ResearchJob[] }>(
       '/research/jobs'
     );
@@ -24,7 +24,7 @@ export const researchApi = {
   },
 
   // Get research job status
-  getById: async (jobId: string) => {
+  getById: async (jobId: string): Promise<ResearchJob> => {
     const response = await axiosInstance.get<ResearchJob>(
       `/research/jobs/${jobId}`
     );
@@ -32,22 +32,15 @@ export const researchApi = {
   },
 
   // Get research job sources
-  getSources: async (jobId: string) => {
-    const response = await axiosInstance.get<{
-      sources: Array<{
-        id: string;
-        url: string;
-        title: string;
-        content: string;
-        scraped_at: string;
-        competitor_name?: string;
-      }>;
-    }>(`/research/jobs/${jobId}/sources`);
+  getSources: async (jobId: string): Promise<{ sources: ResearchSource[] }> => {
+    const response = await axiosInstance.get<{ sources: ResearchSource[] }>(
+      `/research/jobs/${jobId}/sources`
+    );
     return response.data;
   },
 
   // Download research report
-  downloadReport: async (jobId: string) => {
+  downloadReport: async (jobId: string): Promise<string> => {
     const response = await axiosInstance.get<string>(
       `/research/jobs/${jobId}/report`,
       {

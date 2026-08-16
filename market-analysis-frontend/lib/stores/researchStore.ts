@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ResearchJob, StartResearchDto } from '@/types/api';
+import { ResearchJob, ResearchSource, StartResearchDto } from '@/types/api';
 import { researchApi } from '../api/research';
 
 interface ResearchState {
@@ -13,13 +13,24 @@ interface ResearchState {
   startResearch: (data: StartResearchDto) => Promise<ResearchJob>;
   fetchJobs: () => Promise<void>;
   fetchJobById: (jobId: string) => Promise<void>;
-  getSources: (jobId: string) => Promise<any>;
+  getSources: (jobId: string) => Promise<ResearchSource[]>;
   downloadReport: (jobId: string) => Promise<string>;
   setCurrentJob: (job: ResearchJob | null) => void;
   clearError: () => void;
 }
 
-export const useResearchStore = create<ResearchState>((set, get) => ({
+type ApiRequestError = {
+  response?: { data?: { message?: string | string[] } };
+};
+
+function getResearchError(error: unknown, fallback: string) {
+  const message = (error as ApiRequestError).response?.data?.message;
+  if (Array.isArray(message)) return message[0] || fallback;
+  if (message) return message;
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export const useResearchStore = create<ResearchState>((set) => ({
   // Initial state
   jobs: [],
   currentJob: null,
@@ -37,8 +48,8 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
         isLoading: false,
       }));
       return job;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to start research';
+    } catch (error: unknown) {
+      const errorMessage = getResearchError(error, 'Failed to start research');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -50,8 +61,8 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
     try {
       const response = await researchApi.getAll();
       set({ jobs: response.jobs || [], isLoading: false });
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch research jobs';
+    } catch (error: unknown) {
+      const errorMessage = getResearchError(error, 'Failed to fetch research jobs');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -68,8 +79,8 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
       set((state) => ({
         jobs: state.jobs.map((j) => (j.id === jobId ? job : j)),
       }));
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch research job';
+    } catch (error: unknown) {
+      const errorMessage = getResearchError(error, 'Failed to fetch research job');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -82,8 +93,8 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
       const response = await researchApi.getSources(jobId);
       set({ isLoading: false });
       return response.sources;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to fetch sources';
+    } catch (error: unknown) {
+      const errorMessage = getResearchError(error, 'Failed to fetch sources');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }
@@ -96,8 +107,8 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
       const report = await researchApi.downloadReport(jobId);
       set({ isLoading: false });
       return report;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to download report';
+    } catch (error: unknown) {
+      const errorMessage = getResearchError(error, 'Failed to download report');
       set({ error: errorMessage, isLoading: false });
       throw error;
     }

@@ -93,7 +93,7 @@ export default function RegisterPage() {
         <main className="w-full max-w-[480px] z-10" style={{ animation: 'fadeIn 0.7s ease-out' }}>
           {/* Header Branding (Above Card) */}
           <div className="flex flex-col items-center mb-8 text-center">
-            <div
+            {/* <div
               className="w-12 h-12 rounded-xl flex items-center justify-center mb-4 shadow-sm"
               style={{ backgroundColor: '#1a7070' }}
             >
@@ -106,7 +106,7 @@ export default function RegisterPage() {
               >
                 smart_toy
               </span>
-            </div>
+            </div> */}
             <h2
               className="text-2xl font-semibold tracking-tight"
               style={{

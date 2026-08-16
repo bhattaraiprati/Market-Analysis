@@ -11,7 +11,7 @@ type DashboardSidebarProps = {
 
 const navigationItems = [
   { href: '/dashboard', label: 'Home', icon: 'home', exact: true },
-  { href: '/dashboard/dashboards', label: 'Dashboard', icon: 'Dashboard', exact: true },
+  { href: '/dashboard/research', label: 'Deep Research', icon: 'travel_explore' },
   { href: '/dashboard/personas', label: 'Personas', icon: 'people' },
   { href: '/dashboard/knowledge', label: 'Knowledge Base', icon: 'database' },
 ];

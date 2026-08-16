@@ -886,7 +886,7 @@ export default function OrganizationRegisterPage() {
                         Select major players in your space or add custom ones.
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {defaultCompetitors.map((competitor) => {
+                        {/* {defaultCompetitors.map((competitor) => {
                           const isSelected = formData.competitors.includes(competitor);
                           return (
                             <button
@@ -930,7 +930,7 @@ export default function OrganizationRegisterPage() {
                               {competitor}
                               <X size={16} />
                             </button>
-                          ))}
+                          ))} */}
                         <div className="relative">
                           <input
                             type="text"

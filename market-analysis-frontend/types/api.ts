@@ -269,20 +269,73 @@ export interface StartConversationResult {
 export type ResearchType = 'COMPETITOR' | 'MARKET' | 'CUSTOMER' | 'COMPREHENSIVE';
 export type JobStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
 
+export interface ResearchProgress {
+  currentAgent?: 'Searcher' | 'Analyst' | 'Writer' | 'Completed' | 'Failed';
+  currentStep?: string;
+  sourcesFound?: number;
+  competitorsIdentified?: number;
+  competitorsAnalyzed?: number;
+  searcherCompleted?: boolean;
+  analystCompleted?: boolean;
+  error?: string;
+}
+
 export interface ResearchJob {
   id: string;
-  research_type: ResearchType;
-  status: JobStatus;
-  created_at: string;
-  completed_at?: string;
   organization_id: string;
-  output_results?: any;
+  status: JobStatus;
+  research_type: ResearchType;
+  input_parameters: {
+    initiatedBy?: string;
+    timestamp?: string;
+    query?: string;
+    instructions?: string | null;
+    parameters?: Record<string, unknown>;
+  };
+  agent_orchestration_state: ResearchProgress;
+  output_results?: {
+    executiveSummary?: string;
+    keyInsights?: string[];
+    competitorAnalyses?: unknown[];
+    gapAnalysis?: unknown[];
+    strategicRecommendations?: unknown[];
+    marketPosition?: unknown;
+    report?: {
+      markdown: string;
+      title: string;
+      generatedAt: string;
+      wordCount: number;
+    };
+  } | null;
+  error_message?: string | null;
+  message?: string;
+  created_at: string;
+  updated_at?: string;
+  completed_at?: string | null;
 }
 
 export interface StartResearchDto {
   researchType: ResearchType;
-  parameters?: {
-    focusAreas?: string[];
+  query?: string;
+  instructions?: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface ResearchSource {
+  id: string;
+  research_job_id: string;
+  source_type: 'WEBSITE' | 'SOCIAL' | 'NEWS' | 'REVIEW' | 'VIDEO' | 'COMPETITOR';
+  url: string;
+  title?: string;
+  content?: string;
+  scraped_at?: string;
+  credibility_score?: number;
+  metadata?: Record<string, unknown> & {
+    competitorName?: string;
+    location?: string;
+    pageType?: string;
+    searchQuery?: string;
+    queryType?: string;
   };
 }
 
