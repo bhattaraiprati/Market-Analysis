@@ -2,11 +2,21 @@
  * Base types for all agents
  */
 
+import type { ResearchType } from '../../research/research.types';
+
+export interface ResearchBrief {
+  researchType: ResearchType;
+  query?: string;
+  instructions?: string;
+  parameters?: Record<string, unknown>;
+}
+
 export interface AgentContext {
   organizationId: string;
   researchJobId: string;
   companyContext: string;
   userId?: string;
+  research?: ResearchBrief;
   additionalParams?: Record<string, any>;
 }
 

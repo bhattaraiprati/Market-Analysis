@@ -8,13 +8,9 @@ const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
 
 const DEFAULT_TASK_MODELS: Record<LlmTask, string[]> = {
   general: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
-  routing: ['openai/gpt-oss-20b', 'llama-3.1-8b-instant'],
-  search: ['openai/gpt-oss-20b', 'llama-3.1-8b-instant'],
-  conversation: [
-    'openai/gpt-oss-20b',
-    'llama-3.1-8b-instant',
-    'openai/gpt-oss-120b',
-  ],
+  routing: ['openai/gpt-oss-20b'],
+  search: ['openai/gpt-oss-20b'],
+  conversation: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
   analysis: [
     'openai/gpt-oss-120b',
     'llama-3.3-70b-versatile',

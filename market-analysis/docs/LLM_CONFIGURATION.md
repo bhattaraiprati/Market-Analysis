@@ -16,27 +16,27 @@ The second key is optional. When present, concurrent requests are balanced acros
 
 ## Task routing
 
-| Agent workload | Preferred model | Why |
-|---|---|---|
-| Query routing | `openai/gpt-oss-20b` | Fast structured classification; 120B is unnecessary |
-| Search planning | `openai/gpt-oss-20b` | Fast JSON/query generation |
-| Conversation | `openai/gpt-oss-20b` | Low-latency general responses |
-| Analysis | `openai/gpt-oss-120b` | Stronger reasoning for strategy and synthesis |
-| Writing | `openai/gpt-oss-120b` | Higher-quality synthesis and long-form prose |
+| Agent workload  | Preferred model       | Why                                                 |
+| --------------- | --------------------- | --------------------------------------------------- |
+| Query routing   | `openai/gpt-oss-20b`  | Fast structured classification; 120B is unnecessary |
+| Search planning | `openai/gpt-oss-20b`  | Fast JSON/query generation                          |
+| Conversation    | `openai/gpt-oss-20b`  | Low-latency general responses                       |
+| Analysis        | `openai/gpt-oss-120b` | Stronger reasoning for strategy and synthesis       |
+| Writing         | `openai/gpt-oss-120b` | Higher-quality synthesis and long-form prose        |
 
 Every route can be changed without editing agent files:
 
 ```env
-GROQ_MODELS_ROUTING=openai/gpt-oss-20b,llama-3.1-8b-instant
-GROQ_MODELS_SEARCH=openai/gpt-oss-20b,llama-3.1-8b-instant
-GROQ_MODELS_CONVERSATION=openai/gpt-oss-20b,llama-3.1-8b-instant,openai/gpt-oss-120b
+GROQ_MODELS_ROUTING=openai/gpt-oss-20b
+GROQ_MODELS_SEARCH=openai/gpt-oss-20b
+GROQ_MODELS_CONVERSATION=openai/gpt-oss-20b,openai/gpt-oss-120b
 GROQ_MODELS_ANALYSIS=openai/gpt-oss-120b,llama-3.3-70b-versatile,openai/gpt-oss-20b
 GROQ_MODELS_WRITING=openai/gpt-oss-120b,llama-3.3-70b-versatile,openai/gpt-oss-20b
 ```
 
 Models are attempted from left to right. `GROQ_MODEL` remains supported only as a legacy override for calls that use the `general` task.
 
-> Groq has scheduled `llama-3.1-8b-instant` and `llama-3.3-70b-versatile` for shutdown on August 16, 2026. They are temporary overflow fallbacks here, not preferred production models. Remove them from the task lists by that date; the recommended replacements are already the preferred GPT-OSS models.
+`llama-3.1-8b-instant` has been removed ahead of its August 16, 2026 decommission date. Routing, search, and conversation workloads now use `openai/gpt-oss-20b` as Groq recommends.
 
 ## Using the service
 

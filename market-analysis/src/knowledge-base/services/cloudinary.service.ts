@@ -2,11 +2,37 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
+const DEFAULT_UPLOAD_TIMEOUT_MS = 180_000;
+const DEFAULT_UPLOAD_MAX_ATTEMPTS = 3;
+const DEFAULT_UPLOAD_RETRY_DELAY_MS = 1_000;
+
+interface CloudinaryErrorLike {
+  http_code?: number;
+  message?: string;
+  name?: string;
+  code?: string;
+}
+
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
+  private readonly uploadTimeoutMs: number;
+  private readonly uploadMaxAttempts: number;
+  private readonly uploadRetryDelayMs: number;
 
   constructor(private configService: ConfigService) {
+    this.uploadTimeoutMs = this.getPositiveInteger(
+      'CLOUDINARY_UPLOAD_TIMEOUT_MS',
+      DEFAULT_UPLOAD_TIMEOUT_MS,
+    );
+    this.uploadMaxAttempts = this.getPositiveInteger(
+      'CLOUDINARY_UPLOAD_MAX_ATTEMPTS',
+      DEFAULT_UPLOAD_MAX_ATTEMPTS,
+    );
+    this.uploadRetryDelayMs = this.getPositiveInteger(
+      'CLOUDINARY_UPLOAD_RETRY_DELAY_MS',
+      DEFAULT_UPLOAD_RETRY_DELAY_MS,
+    );
     this.initializeCloudinary();
   }
 
@@ -85,53 +111,114 @@ export class CloudinaryService {
       originalFilename?: string;
     } = {},
   ): Promise<UploadApiResponse> {
-    try {
-      const {
-        folder = 'knowledge-base',
-        resourceType = 'auto',
-        publicId,
-        tags = [],
-        originalFilename,
-      } = options;
+    const {
+      folder = 'knowledge-base',
+      resourceType = 'auto',
+      publicId,
+      tags = [],
+      originalFilename,
+    } = options;
 
-      this.logger.log(`Uploading buffer to Cloudinary`);
+    this.logger.log(
+      `Uploading ${buffer.length} byte buffer to Cloudinary (timeout ${this.uploadTimeoutMs}ms)`,
+    );
 
-      return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder,
-            resource_type: resourceType,
-            public_id: publicId,
-            tags,
-            use_filename: false,
-            unique_filename: false,
-            overwrite: false,
-            filename_override: originalFilename,
-            display_name: originalFilename,
-          },
-          (error, result) => {
-            if (error) {
-              this.logger.error('Failed to upload buffer to Cloudinary', error);
-              reject(error);
-            } else if (!result) {
-              const uploadError = new Error('Cloudinary upload did not return a result');
-              this.logger.error('Failed to upload buffer to Cloudinary', uploadError);
-              reject(uploadError);
-            } else {
-              this.logger.log(
-                `Buffer uploaded successfully: ${result.public_id}`,
-              );
-              resolve(result);
-            }
-          },
+    for (let attempt = 1; attempt <= this.uploadMaxAttempts; attempt += 1) {
+      try {
+        const result = await this.uploadBufferOnce(buffer, {
+          folder,
+          resourceType,
+          publicId,
+          tags,
+          originalFilename,
+        });
+        this.logger.log(`Buffer uploaded successfully: ${result.public_id}`);
+        return result;
+      } catch (error) {
+        const canRetry =
+          attempt < this.uploadMaxAttempts &&
+          this.isRetryableUploadError(error);
+
+        if (!canRetry) {
+          this.logger.error('Failed to upload buffer to Cloudinary', error);
+          throw error;
+        }
+
+        const delayMs = this.uploadRetryDelayMs * 2 ** (attempt - 1);
+        this.logger.warn(
+          `Cloudinary upload attempt ${attempt}/${this.uploadMaxAttempts} failed transiently; retrying in ${delayMs}ms`,
         );
-
-        uploadStream.end(buffer);
-      });
-    } catch (error) {
-      this.logger.error('Failed to upload buffer to Cloudinary', error);
-      throw error;
+        await this.sleep(delayMs);
+      }
     }
+
+    throw new Error('Cloudinary upload failed without returning an error');
+  }
+
+  private uploadBufferOnce(
+    buffer: Buffer,
+    options: {
+      folder: string;
+      resourceType: 'image' | 'raw' | 'video' | 'auto';
+      publicId?: string;
+      tags: string[];
+      originalFilename?: string;
+    },
+  ): Promise<UploadApiResponse> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: options.folder,
+          resource_type: options.resourceType,
+          public_id: options.publicId,
+          tags: options.tags,
+          use_filename: false,
+          unique_filename: false,
+          // Retries reuse the same public ID, so an upload that completed just
+          // before the client timed out can be safely confirmed/replaced.
+          overwrite: true,
+          filename_override: options.originalFilename,
+          display_name: options.originalFilename,
+          timeout: this.uploadTimeoutMs,
+        },
+        (error, result) => {
+          if (error) {
+            reject(error);
+          } else if (!result) {
+            reject(new Error('Cloudinary upload did not return a result'));
+          } else {
+            resolve(result);
+          }
+        },
+      );
+
+      uploadStream.end(buffer);
+    });
+  }
+
+  private isRetryableUploadError(error: unknown): boolean {
+    const uploadError = error as CloudinaryErrorLike;
+    const status = uploadError?.http_code;
+    const details = `${uploadError?.name ?? ''} ${uploadError?.code ?? ''} ${uploadError?.message ?? ''}`;
+
+    return (
+      status === 408 ||
+      status === 429 ||
+      status === 499 ||
+      Boolean(status && status >= 500) ||
+      /TimeoutError|ETIMEDOUT|ECONNRESET|EPIPE|socket hang up/i.test(details)
+    );
+  }
+
+  private getPositiveInteger(key: string, fallback: number): number {
+    const configured = Number(this.configService.get<string>(key));
+    return Number.isFinite(configured) && configured > 0
+      ? Math.floor(configured)
+      : fallback;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -230,7 +317,9 @@ export class CloudinaryService {
         resource_type: resourceType,
       });
 
-      this.logger.log(`Deleted ${result.deleted?.length || 0} files with tag: ${tag}`);
+      this.logger.log(
+        `Deleted ${result.deleted?.length || 0} files with tag: ${tag}`,
+      );
 
       return result;
     } catch (error) {

@@ -14,9 +14,11 @@ import {
   SearchQuery,
   CompetitorInfo,
   SourceType,
+  ResearchBrief,
 } from '../base/agent.types';
 import { CompanyContextService } from '../../company-context/company-context.service';
 import { LlmService } from '../../llm/llm.service';
+import { ResearchType } from '../../research/research.types';
 
 interface SearcherResult {
   sources: ScrapedSource[];
@@ -27,9 +29,11 @@ interface SearcherResult {
 
 interface CompetitorSearchResult {
   query: string;
+  queryType: SearchQuery['type'];
   title: string;
   url: string;
   description: string;
+  content: string;
 }
 
 interface FirecrawlSearchDocument {
@@ -45,6 +49,10 @@ interface FirecrawlSearchDocument {
     sourceURL?: string;
   };
 }
+
+const MAX_COMPANY_CONTEXT_CHARACTERS = 4000;
+const MAX_COMPETITOR_EVIDENCE_CHARACTERS = 6500;
+const MAX_SEARCH_RESULT_SNIPPET_CHARACTERS = 350;
 
 @Injectable()
 export class SearcherAgent extends BaseAgent<SearcherResult> {
@@ -98,6 +106,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
       const searchQueries = await this.generateCompetitorSearchQueries(
         context.companyContext,
         orgData,
+        context.research,
       );
 
       this.logSuccess(`Generated ${searchQueries.length} search queries`);
@@ -106,6 +115,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
       // in current web results rather than relying only on the LLM's memory.
       this.logStart('Searching the web for competitor evidence...');
       const searchResults = await this.executeSearchQueries(searchQueries);
+      const researchSources = this.toResearchSources(searchResults);
 
       this.logSuccess(`Collected ${searchResults.length} web search results`);
 
@@ -132,13 +142,14 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
 
       // 6. Enrich with deep page scraping
       this.logStart('Enriching with deep page scraping...');
-      const allSources = await this.enrichWithDeepPages(
+      const competitorSources = await this.enrichWithDeepPages(
         homepageSources,
         competitors,
       );
+      const allSources = [...researchSources, ...competitorSources];
 
       this.logSuccess(
-        `Total sources after enrichment: ${allSources.length} (${allSources.length - homepageSources.length} deep pages)`,
+        `Total sources after enrichment: ${allSources.length} (${researchSources.length} search evidence sources)`,
       );
 
       const executionTimeMs = Date.now() - startTime;
@@ -155,7 +166,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
           searchResultsFound: searchResults.length,
           competitorsFound: competitors.length,
           homepagesScraped: homepageSources.length,
-          deepPagesScraped: allSources.length - homepageSources.length,
+          deepPagesScraped: competitorSources.length - homepageSources.length,
         },
       );
     } catch (error) {
@@ -175,10 +186,11 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
     for (let i = 0; i < queries.length; i += batchSize) {
       const batch = queries.slice(i, i + batchSize);
       const responses = await Promise.allSettled(
-        batch.map(async ({ query }) => {
+        batch.map(async ({ query, type }) => {
           const response = await this.firecrawl.search(query, { limit: 5 });
           return {
             query,
+            queryType: type,
             documents: (response.web || []) as FirecrawlSearchDocument[],
           };
         }),
@@ -199,6 +211,7 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
           seenUrls.add(url);
           results.push({
             query: response.value.query,
+            queryType: response.value.queryType,
             title:
               document.title ||
               document.metadata?.title ||
@@ -211,12 +224,44 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
               document.metadata?.ogDescription ||
               document.markdown?.slice(0, 500) ||
               '',
+            content:
+              document.markdown ||
+              document.description ||
+              document.metadata?.description ||
+              document.metadata?.ogDescription ||
+              '',
           });
         }
       });
     }
 
     return results;
+  }
+
+  private toResearchSources(
+    searchResults: CompetitorSearchResult[],
+  ): ScrapedSource[] {
+    return searchResults
+      .filter((result) => result.content.trim().length > 0)
+      .slice(0, 20)
+      .map((result) => ({
+        url: result.url,
+        title: result.title,
+        content: result.content,
+        sourceType: this.sourceTypeForQuery(result.queryType),
+        metadata: {
+          searchQuery: result.query,
+          queryType: result.queryType,
+          pageType: 'search-result',
+        },
+        scrapedAt: new Date(),
+      }));
+  }
+
+  private sourceTypeForQuery(queryType: SearchQuery['type']): SourceType {
+    if (queryType === 'news') return SourceType.NEWS;
+    if (queryType === 'customer') return SourceType.REVIEW;
+    return SourceType.WEBSITE;
   }
 
   /**
@@ -230,25 +275,30 @@ export class SearcherAgent extends BaseAgent<SearcherResult> {
       location: string;
       knownCompetitors: string[];
     },
+    research?: ResearchBrief,
   ): Promise<SearchQuery[]> {
-    const prompt = `You are a competitive intelligence researcher. Your task is to generate highly specific search queries to find competitors.
+    const prompt = `You are a deep market research specialist. Generate highly specific web search queries for the current research brief.
 
 COMPANY CONTEXT:
-${companyContext}
+${this.limitText(companyContext, MAX_COMPANY_CONTEXT_CHARACTERS)}
 
 LOCATION: ${orgData.location}
 KNOWN COMPETITORS: ${orgData.knownCompetitors.join(', ')}
+RESEARCH TYPE: ${research?.researchType || 'COMPETITOR'}
+PRIMARY QUESTION: ${research?.query || 'Identify and compare the strongest competitors.'}
+ADDITIONAL INSTRUCTIONS: ${research?.instructions || 'None'}
 
-Generate 10 search queries to find:
-1. Top direct competitors in ${orgData.location} (PRIORITY: HIGH) - Focus on the market leaders
-2. Key international competitors (PRIORITY: MEDIUM) - Only major players
-3. Focus on quality over quantity - we want the TOP competitors only
+Generate 10 search queries that collectively cover:
+1. The user's primary question and requested focus areas
+2. Current market, customer, regulatory, or news evidence relevant to the research type
+3. Direct competitors in ${orgData.location} and major international competitors where relevant
+4. Primary and authoritative sources whenever available
 
 IMPORTANT:
-- PRIORITIZE ${orgData.location} based competitors (domestic market leaders)
-- Only include major, established competitors
-- Focus on companies offering similar products/services
-- Include specific industry keywords
+- Include the company industry, geography, and concrete subject terms
+- Prefer recent and authoritative evidence over generic articles
+- Use a mixture of competitor, market, customer, and news query types when the research is comprehensive
+- Treat the research brief as scope, not as permission to invent facts
 
 Return ONLY a JSON array of search queries in this exact format:
 [
@@ -272,7 +322,7 @@ Return ONLY valid JSON, no other text.`;
       const completion = await this.llmService.generateText({
         task: 'search',
         systemPrompt:
-          'You are a competitive intelligence expert. Return only valid JSON arrays.',
+          'You generate evidence-focused market research queries. Return only valid JSON arrays.',
         userPrompt: prompt,
         temperature: 0.6, // Here the temp is 0.3 before
         maxTokens: 2000,
@@ -295,7 +345,7 @@ Return ONLY valid JSON, no other text.`;
     } catch (error) {
       this.logError('Failed to generate search queries', error);
       // Fallback to basic queries
-      return this.getFallbackQueries(orgData);
+      return this.getFallbackQueries(orgData, research);
     }
   }
 
@@ -319,18 +369,21 @@ Return ONLY valid JSON, no other text.`;
       return this.getFallbackCompetitors(orgData);
     }
 
-    const evidence = searchResults
-      .slice(0, 50)
-      .map(
-        (result, index) =>
-          `${index + 1}. ${result.title}\nURL: ${result.url}\nSnippet: ${result.description}`,
-      )
-      .join('\n\n');
+    const evidence = this.limitText(
+      searchResults
+        .slice(0, 30)
+        .map(
+          (result, index) =>
+            `${index + 1}. ${result.title}\nURL: ${result.url}\nSnippet: ${this.limitText(result.description, MAX_SEARCH_RESULT_SNIPPET_CHARACTERS)}`,
+        )
+        .join('\n\n'),
+      MAX_COMPETITOR_EVIDENCE_CHARACTERS,
+    );
 
     const prompt = `You are a competitive intelligence analyst. Identify the TOP 5 competitors for this company.
 
 COMPANY CONTEXT:
-${companyContext}
+${this.limitText(companyContext, MAX_COMPANY_CONTEXT_CHARACTERS)}
 
 LOCATION: ${orgData.location}
 KNOWN COMPETITORS: ${orgData.knownCompetitors.join(', ')}
@@ -593,12 +646,28 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
   /**
    * Fallback queries if Groq fails
    */
-  private getFallbackQueries(orgData: {
-    name: string;
-    industry: string;
-    location: string;
-  }): SearchQuery[] {
+  private getFallbackQueries(
+    orgData: {
+      name: string;
+      industry: string;
+      location: string;
+    },
+    research?: ResearchBrief,
+  ): SearchQuery[] {
+    const scopedQuery = research?.query
+      ? `${research.query} ${orgData.location}`
+      : `${orgData.industry} market trends ${orgData.location}`;
+
     return [
+      {
+        query: scopedQuery,
+        type:
+          research?.researchType === ResearchType.CUSTOMER
+            ? 'customer'
+            : 'market',
+        priority: 'high',
+        region: 'domestic',
+      },
       {
         query: `${orgData.industry} companies ${orgData.location}`,
         type: 'competitor',
@@ -1100,5 +1169,10 @@ MUST return exactly 5 competitors. Return ONLY valid JSON, no other text.`;
     } catch {
       return 'Unknown Page';
     }
+  }
+
+  private limitText(text: string, maxCharacters: number): string {
+    if (text.length <= maxCharacters) return text;
+    return `${text.slice(0, maxCharacters)}\n[Content truncated to fit the LLM request budget.]`;
   }
 }

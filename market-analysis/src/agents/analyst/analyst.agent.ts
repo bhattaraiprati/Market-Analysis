@@ -40,7 +40,13 @@ export interface CompetitorAnalysis {
 }
 
 export interface PricingAnalysis {
-  model: 'freemium' | 'subscription' | 'transaction-based' | 'enterprise' | 'free' | 'unknown';
+  model:
+    | 'freemium'
+    | 'subscription'
+    | 'transaction-based'
+    | 'enterprise'
+    | 'free'
+    | 'unknown';
   details: string;
   competitiveness: 'cheaper' | 'similar' | 'expensive' | 'unknown';
 }
@@ -57,7 +63,8 @@ export interface GapAnalysis {
 
 export interface StrategicRecommendation {
   priority: 'critical' | 'high' | 'medium' | 'low';
-  category: 'differentiation' | 'pricing' | 'features' | 'marketing' | 'expansion';
+  category:
+    'differentiation' | 'pricing' | 'features' | 'marketing' | 'expansion';
   title: string;
   rationale: string;
   actionItems: string[];
@@ -105,7 +112,9 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
    * Main execution method
    */
   async execute(context: AgentContext): Promise<AgentResult<AnalystResult>> {
-    this.logStart(`Starting competitive analysis for organization ${context.organizationId}`);
+    this.logStart(
+      `Starting competitive analysis for organization ${context.organizationId}`,
+    );
 
     const startTime = Date.now();
 
@@ -115,17 +124,24 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         context.organizationId,
       );
 
-      this.logger.log(`📋 Analyzing for: ${orgData.name} (${orgData.industry})`);
+      this.logger.log(
+        `📋 Analyzing for: ${orgData.name} (${orgData.industry})`,
+      );
 
       // 2. Get scraped sources from context (passed by orchestrator)
       const sources = context.additionalParams?.sources as ScrapedSource[];
-      const competitors = context.additionalParams?.competitors as CompetitorInfo[];
+      const competitors = context.additionalParams
+        ?.competitors as CompetitorInfo[];
 
       if (!sources || !competitors) {
-        throw new Error('No competitor data provided. Run SearcherAgent first.');
+        throw new Error(
+          'No competitor data provided. Run SearcherAgent first.',
+        );
       }
 
-      this.logger.log(`📊 Analyzing ${sources.length} sources from ${competitors.length} competitors`);
+      this.logger.log(
+        `📊 Analyzing ${sources.length} sources from ${competitors.length} competitors`,
+      );
 
       // 3. Group sources by competitor
       const sourcesByCompetitor = this.groupSourcesByCompetitor(sources);
@@ -138,8 +154,9 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         context.companyContext,
       );
 
-
-      console.log(`\n📊 Competitor Analysis Summary: ${competitorAnalyses.length} competitors analyzed`);
+      console.log(
+        `\n📊 Competitor Analysis Summary: ${competitorAnalyses.length} competitors analyzed`,
+      );
 
       // 5. Perform gap analysis
       this.logStart('Performing gap analysis...');
@@ -149,13 +166,20 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         orgData,
       );
 
-      console.log(`\n🔍 Gap Analysis Results (${gapAnalysis.length} gaps identified):`);
+      console.log(
+        `\n🔍 Gap Analysis Results (${gapAnalysis.length} gaps identified):`,
+      );
       gapAnalysis.forEach((gap, idx) => {
-        console.log(`   ${idx + 1}. [${gap.impact.toUpperCase()}] ${gap.gapTitle}`);
-        console.log(`      Category: ${gap.category} | Status: ${gap.yourCompanyStatus}`);
-        console.log(`      Competitors doing well: ${gap.competitorsDoingWell.join(', ')}`);
+        console.log(
+          `   ${idx + 1}. [${gap.impact.toUpperCase()}] ${gap.gapTitle}`,
+        );
+        console.log(
+          `      Category: ${gap.category} | Status: ${gap.yourCompanyStatus}`,
+        );
+        console.log(
+          `      Competitors doing well: ${gap.competitorsDoingWell.join(', ')}`,
+        );
       });
-
 
       // 6. Generate strategic recommendations
       this.logStart('Generating strategic recommendations...');
@@ -166,13 +190,18 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         orgData,
       );
 
-      console.log(`\n💡 Strategic Recommendations (${strategicRecommendations.length} generated):`);
+      console.log(
+        `\n💡 Strategic Recommendations (${strategicRecommendations.length} generated):`,
+      );
       strategicRecommendations.forEach((rec, idx) => {
-        console.log(`   ${idx + 1}. [${rec.priority.toUpperCase()}] ${rec.title}`);
-        console.log(`      Category: ${rec.category} | Timeframe: ${rec.timeframe}`);
+        console.log(
+          `   ${idx + 1}. [${rec.priority.toUpperCase()}] ${rec.title}`,
+        );
+        console.log(
+          `      Category: ${rec.category} | Timeframe: ${rec.timeframe}`,
+        );
         console.log(`      Impact: ${rec.expectedImpact}`);
       });
-
 
       // 7. Analyze market position
       this.logStart('Analyzing market position...');
@@ -186,13 +215,14 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
 
       // 8. Generate executive summary
       this.logStart('Generating executive summary...');
-      const { executiveSummary, keyInsights } = await this.generateExecutiveSummary(
-        competitorAnalyses,
-        gapAnalysis,
-        strategicRecommendations,
-        marketPosition,
-        orgData,
-      );
+      const { executiveSummary, keyInsights } =
+        await this.generateExecutiveSummary(
+          competitorAnalyses,
+          gapAnalysis,
+          strategicRecommendations,
+          marketPosition,
+          orgData,
+        );
 
       console.log(`\n📝 Executive Summary:\n${executiveSummary}`);
       console.log(`\n🎯 Key Insights:`);
@@ -269,7 +299,12 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
         batch.map((name) => {
           const sources = sourcesByCompetitor.get(name)!;
           const competitor = competitors.find((c) => c.name === name);
-          return this.analyzeCompetitor(name, sources, competitor, companyContext);
+          return this.analyzeCompetitor(
+            name,
+            sources,
+            competitor,
+            companyContext,
+          );
         }),
       );
 
@@ -278,18 +313,27 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
           analyses.push(result.value);
           const analysis = result.value;
           console.log(`\n✅ ${batch[idx]} Analysis:`);
-          console.log(`   Position: ${analysis.marketPosition} | Threat: ${analysis.threatLevel}`);
-          console.log(`   Strengths: ${analysis.strengths.slice(0, 3).join(', ')}`);
-          console.log(`   Key Features: ${analysis.keyFeatures.slice(0, 3).join(', ')}`);
-          console.log(`   Pricing: ${analysis.pricingModel.model} (${analysis.pricingModel.competitiveness})`);
+          console.log(
+            `   Position: ${analysis.marketPosition} | Threat: ${analysis.threatLevel}`,
+          );
+          console.log(
+            `   Strengths: ${analysis.strengths.slice(0, 3).join(', ')}`,
+          );
+          console.log(
+            `   Key Features: ${analysis.keyFeatures.slice(0, 3).join(', ')}`,
+          );
+          console.log(
+            `   Pricing: ${analysis.pricingModel.model} (${analysis.pricingModel.competitiveness})`,
+          );
         } else {
           this.logger.error(`⚠️ Failed to analyze: ${batch[idx]}`);
           if (result.status === 'rejected') {
-            this.logger.error(`   Reason: ${result.reason?.message || 'Unknown error'}`);
+            this.logger.error(
+              `   Reason: ${result.reason?.message || 'Unknown error'}`,
+            );
           }
         }
       });
-
     }
 
     return analyses;
@@ -307,13 +351,15 @@ export class AnalystAgent extends BaseAgent<AnalystResult> {
     // Build a balanced evidence packet instead of letting one large page use
     // the entire Groq request budget.
     const truncatedContent = this.combineSourceContent(sources, 6000, 1800);
+    const boundedCompanyContext = this.limitText(companyContext, 4000);
 
-    const systemPrompt = 'You are a competitive intelligence expert. Return only valid JSON objects.';
+    const systemPrompt =
+      'You are a competitive intelligence expert. Return only valid JSON objects.';
 
     const userPrompt = `You are a competitive intelligence analyst. Analyze this competitor deeply and provide structured insights.
 
 YOUR COMPANY CONTEXT:
-${companyContext}
+${boundedCompanyContext}
 
 COMPETITOR NAME: ${competitorName}
 COMPETITOR LOCATION: ${competitor?.location || 'Unknown'}
@@ -366,7 +412,11 @@ JSON:`;
         strengths: analysis.strengths || [],
         weaknesses: analysis.weaknesses || [],
         keyFeatures: analysis.keyFeatures || [],
-        pricingModel: analysis.pricingModel || { model: 'unknown', details: '', competitiveness: 'unknown' },
+        pricingModel: analysis.pricingModel || {
+          model: 'unknown',
+          details: '',
+          competitiveness: 'unknown',
+        },
         targetMarket: analysis.targetMarket || [],
         uniqueSellingPoints: analysis.uniqueSellingPoints || [],
         marketPosition: analysis.marketPosition || 'follower',
@@ -396,26 +446,34 @@ JSON:`;
       analysis.strengths.forEach((s) => allStrengths.add(s));
     });
 
-    const competitorCapabilities = Array.from(allFeatures).concat(Array.from(allStrengths));
+    const competitorCapabilities = Array.from(allFeatures).concat(
+      Array.from(allStrengths),
+    );
 
-    const systemPrompt = 'You are a strategic gap analyst. Return only valid JSON arrays.';
+    const systemPrompt =
+      'You are a strategic gap analyst. Return only valid JSON arrays.';
+    const boundedCompanyContext = this.limitText(companyContext, 4000);
 
     const userPrompt = `You are a strategic gap analyst. Identify competitive gaps for this company.
 
 YOUR COMPANY:
-${companyContext}
+${boundedCompanyContext}
 
 COMPETITOR CAPABILITIES (what competitors are doing well):
 ${competitorCapabilities.slice(0, 50).join('\n')}
 
 COMPETITOR ANALYSES:
-${competitorAnalyses.map((a) => `
+${competitorAnalyses
+  .map(
+    (a) => `
 ${a.competitorName}:
 - Position: ${a.marketPosition}
 - Threat: ${a.threatLevel}
 - Key Features: ${a.keyFeatures.slice(0, 5).join(', ')}
 - USPs: ${a.uniqueSellingPoints.join(', ')}
-`).join('\n')}
+`,
+  )
+  .join('\n')}
 
 Identify 5-8 critical gaps where YOUR company is behind competitors.
 
@@ -468,12 +526,14 @@ JSON:`;
     companyContext: string,
     orgData: any,
   ): Promise<StrategicRecommendation[]> {
-    const systemPrompt = 'You are a strategic business advisor. Return only valid JSON arrays.';
+    const systemPrompt =
+      'You are a strategic business advisor. Return only valid JSON arrays.';
+    const boundedCompanyContext = this.limitText(companyContext, 4000);
 
     const userPrompt = `You are a strategic advisor. Generate actionable recommendations for this company.
 
 YOUR COMPANY:
-${companyContext}
+${boundedCompanyContext}
 
 BUSINESS GOALS:
 ${orgData.business_goals}
@@ -485,7 +545,13 @@ IDENTIFIED GAPS:
 ${gapAnalysis.map((g) => `- ${g.gapTitle} (${g.impact} impact): ${g.description}`).join('\n')}
 
 TOP COMPETITORS:
-${competitorAnalyses.slice(0, 5).map((a) => `- ${a.competitorName} (${a.marketPosition}, ${a.threatLevel} threat)`).join('\n')}
+${competitorAnalyses
+  .slice(0, 5)
+  .map(
+    (a) =>
+      `- ${a.competitorName} (${a.marketPosition}, ${a.threatLevel} threat)`,
+  )
+  .join('\n')}
 
 Generate 6-10 strategic recommendations that are:
 - Specific and actionable
@@ -518,7 +584,9 @@ JSON:`;
         throw new Error('No JSON array found in response');
       }
 
-      const recommendations: StrategicRecommendation[] = JSON.parse(jsonMatch[0]);
+      const recommendations: StrategicRecommendation[] = JSON.parse(
+        jsonMatch[0],
+      );
       return recommendations;
     } catch (error) {
       this.logError('Failed to generate recommendations', error);
@@ -534,23 +602,29 @@ JSON:`;
     companyContext: string,
     orgData: any,
   ): Promise<MarketPosition> {
-    const systemPrompt = 'You are a market intelligence analyst. Return only valid JSON objects.';
+    const systemPrompt =
+      'You are a market intelligence analyst. Return only valid JSON objects.';
+    const boundedCompanyContext = this.limitText(companyContext, 4000);
 
     const userPrompt = `You are a market analyst. Analyze this company's position in the competitive landscape.
 
 YOUR COMPANY:
-${companyContext}
+${boundedCompanyContext}
 
 LOCATION: ${orgData.location}
 
 COMPETITIVE LANDSCAPE:
-${competitorAnalyses.map((a) => `
+${competitorAnalyses
+  .map(
+    (a) => `
 ${a.competitorName} (${a.location}):
 - Position: ${a.marketPosition}
 - Threat Level: ${a.threatLevel}
 - USPs: ${a.uniqueSellingPoints.join(', ')}
 - Target Market: ${a.targetMarket.join(', ')}
-`).join('\n')}
+`,
+  )
+  .join('\n')}
 
 Analyze the market and return ONLY a JSON object in this EXACT format:
 {
@@ -604,9 +678,12 @@ JSON:`;
     orgData: any,
   ): Promise<{ executiveSummary: string; keyInsights: string[] }> {
     const criticalGaps = gapAnalysis.filter((g) => g.impact === 'high');
-    const criticalRecommendations = strategicRecommendations.filter((r) => r.priority === 'critical' || r.priority === 'high');
+    const criticalRecommendations = strategicRecommendations.filter(
+      (r) => r.priority === 'critical' || r.priority === 'high',
+    );
 
-    const systemPrompt = 'You are a business intelligence executive. Return only valid JSON objects.';
+    const systemPrompt =
+      'You are a business intelligence executive. Return only valid JSON objects.';
 
     const userPrompt = `You are a business intelligence executive. Create an executive summary of this competitive analysis.
 
@@ -662,13 +739,15 @@ JSON:`;
 
       const summary = JSON.parse(jsonMatch[0]);
       return {
-        executiveSummary: summary.executiveSummary || 'Summary generation failed',
+        executiveSummary:
+          summary.executiveSummary || 'Summary generation failed',
         keyInsights: summary.keyInsights || [],
       };
     } catch (error) {
       this.logError('Failed to generate executive summary', error);
       return {
-        executiveSummary: 'Analysis complete. Review detailed sections for insights.',
+        executiveSummary:
+          'Analysis complete. Review detailed sections for insights.',
         keyInsights: [],
       };
     }
@@ -706,23 +785,28 @@ JSON:`;
     return `${sections.join('\n\n')}\n\n[Evidence limited to fit the LLM request budget.]`;
   }
 
-  /**
- * Invoke the configured LLM provider
- */
-private async callLlm(
-  systemPrompt: string,
-  userPrompt: string,
-  maxTokens = 4000,
-  temperature = 0.4,
-): Promise<string> {
-  const result = await this.llmService.generateText({
-    task: 'analysis',
-    systemPrompt,
-    userPrompt,
-    maxTokens,
-    temperature,
-  });
+  private limitText(text: string, maxCharacters: number): string {
+    if (text.length <= maxCharacters) return text;
+    return `${text.slice(0, maxCharacters)}\n[Content truncated to fit the LLM request budget.]`;
+  }
 
-  return result.content;
-}
+  /**
+   * Invoke the configured LLM provider
+   */
+  private async callLlm(
+    systemPrompt: string,
+    userPrompt: string,
+    maxTokens = 4000,
+    temperature = 0.4,
+  ): Promise<string> {
+    const result = await this.llmService.generateText({
+      task: 'analysis',
+      systemPrompt,
+      userPrompt,
+      maxTokens,
+      temperature,
+    });
+
+    return result.content;
+  }
 }

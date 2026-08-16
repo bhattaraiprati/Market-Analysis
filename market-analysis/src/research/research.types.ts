@@ -1,0 +1,6 @@
+export enum ResearchType {
+  COMPETITOR = 'COMPETITOR',
+  MARKET = 'MARKET',
+  CUSTOMER = 'CUSTOMER',
+  COMPREHENSIVE = 'COMPREHENSIVE',
+}

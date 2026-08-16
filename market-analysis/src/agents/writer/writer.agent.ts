@@ -6,7 +6,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { BaseAgent } from '../base/base.agent';
-import { AgentContext, AgentResult } from '../base/agent.types';
+import { AgentContext, AgentResult, ResearchBrief } from '../base/agent.types';
 import { AnalystResult } from '../analyst/analyst.agent';
 import { LlmService } from '../../llm/llm.service';
 
@@ -37,29 +37,34 @@ export class WriterAgent extends BaseAgent<WriterResult> {
 
     try {
       // 1. Get analyst result from context
-      const analystResult = context.additionalParams?.analystResult as AnalystResult;
+      const analystResult = context.additionalParams
+        ?.analystResult as AnalystResult;
       const companyName = context.additionalParams?.companyName as string;
 
       if (!analystResult) {
         throw new Error('No analyst result provided. Run AnalystAgent first.');
       }
 
-      this.logger.log(`📝 Generating report for: ${companyName || 'Unknown Company'}`);
+      this.logger.log(
+        `📝 Generating report for: ${companyName || 'Unknown Company'}`,
+      );
 
       // 2. Generate report sections
       this.logStart('Generating report sections...');
       const reportMarkdown = await this.generateFullReport(
         companyName || 'Your Company',
-        context.companyContext,
         analystResult,
+        context.research,
       );
 
       // 3. Calculate metadata
       const wordCount = this.countWords(reportMarkdown);
       const executionTimeMs = Date.now() - startTime;
-      const reportTitle = `Competitive Intelligence Report - ${companyName}`;
+      const reportTitle = `${this.reportTypeLabel(context.research)} - ${companyName}`;
 
-      this.logSuccess(`Report generated: ${wordCount} words in ${executionTimeMs}ms`);
+      this.logSuccess(
+        `Report generated: ${wordCount} words in ${executionTimeMs}ms`,
+      );
 
       return this.createSuccessResult<WriterResult>(
         {
@@ -86,13 +91,17 @@ export class WriterAgent extends BaseAgent<WriterResult> {
    */
   private async generateFullReport(
     companyName: string,
-    companyContext: string,
     analystResult: AnalystResult,
+    research?: ResearchBrief,
   ): Promise<string> {
     const sections: string[] = [];
 
     // Header
-    sections.push(this.generateHeader(companyName, analystResult));
+    sections.push(this.generateHeader(companyName, analystResult, research));
+
+    if (research) {
+      sections.push(this.generateResearchScope(research));
+    }
 
     // 1. Executive Summary
     sections.push(await this.generateExecutiveSummarySection(analystResult));
@@ -121,27 +130,55 @@ export class WriterAgent extends BaseAgent<WriterResult> {
   /**
    * Generate report header
    */
-  private generateHeader(companyName: string, analystResult: AnalystResult): string {
+  private generateHeader(
+    companyName: string,
+    analystResult: AnalystResult,
+    research?: ResearchBrief,
+  ): string {
     const date = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
 
-    return `# Competitive Intelligence Report
+    return `# ${this.reportTypeLabel(research)}
 ## ${companyName}
 
 **Report Date:** ${date}
 **Competitors Analyzed:** ${analystResult.totalCompetitorsAnalyzed}
 **Data Sources:** ${analystResult.totalSourcesAnalyzed}
-**Analysis Type:** Comprehensive Market & Competitive Analysis`;
+**Analysis Type:** ${research?.researchType || 'COMPETITOR'}`;
+  }
+
+  private generateResearchScope(research: ResearchBrief): string {
+    return `## Research Scope
+
+**Primary question:** ${research.query || 'Organization-focused market research'}
+
+**Additional instructions:** ${research.instructions || 'None provided'}
+
+**Parameters:** \`${JSON.stringify(research.parameters ?? {})}\``;
+  }
+
+  private reportTypeLabel(research?: ResearchBrief): string {
+    const labels = {
+      COMPETITOR: 'Competitive Intelligence Report',
+      MARKET: 'Market Research Report',
+      CUSTOMER: 'Customer Research Report',
+      COMPREHENSIVE: 'Comprehensive Market Analysis',
+    } as const;
+
+    return labels[research?.researchType || 'COMPETITOR'];
   }
 
   /**
    * Generate executive summary section
    */
-  private async generateExecutiveSummarySection(analystResult: AnalystResult): Promise<string> {
-    const systemPrompt = 'You are a professional business report writer. Write clear, concise, executive-level content.';
+  private async generateExecutiveSummarySection(
+    analystResult: AnalystResult,
+  ): Promise<string> {
+    const systemPrompt =
+      'You are a professional business report writer. Write clear, concise, executive-level content.';
 
     const userPrompt = `Transform this executive summary into a professional report section.
 
@@ -180,10 +217,13 @@ ${insights}`;
   /**
    * Generate market position section
    */
-  private async generateMarketPositionSection(analystResult: AnalystResult): Promise<string> {
+  private async generateMarketPositionSection(
+    analystResult: AnalystResult,
+  ): Promise<string> {
     const mp = analystResult.marketPosition;
 
-    const systemPrompt = 'You are a market intelligence writer. Write clear, structured reports.';
+    const systemPrompt =
+      'You are a market intelligence writer. Write clear, structured reports.';
 
     const userPrompt = `Transform this market position data into a professional report section.
 
@@ -222,7 +262,9 @@ ${content.trim()}`;
   /**
    * Generate competitor analysis section
    */
-  private async generateCompetitorAnalysisSection(analystResult: AnalystResult): Promise<string> {
+  private async generateCompetitorAnalysisSection(
+    analystResult: AnalystResult,
+  ): Promise<string> {
     const competitors = analystResult.competitorAnalyses;
 
     // Group by threat level
@@ -242,12 +284,23 @@ Total Competitors: ${competitors.length}
 - Medium Threat: ${mediumThreat.length}
 - Low Threat: ${lowThreat.length}
 
-Market Leaders: ${competitors.filter((c) => c.marketPosition === 'leader').map((c) => c.competitorName).join(', ')}
-Challengers: ${competitors.filter((c) => c.marketPosition === 'challenger').map((c) => c.competitorName).join(', ')}
+Market Leaders: ${competitors
+      .filter((c) => c.marketPosition === 'leader')
+      .map((c) => c.competitorName)
+      .join(', ')}
+Challengers: ${competitors
+      .filter((c) => c.marketPosition === 'challenger')
+      .map((c) => c.competitorName)
+      .join(', ')}
 
 Keep it concise and professional.`;
 
-    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.5);
+    const overview = await this.callLlm(
+      systemPrompt,
+      overviewPrompt,
+      1000,
+      0.5,
+    );
     sections.push(overview.trim());
 
     // Detailed competitor profiles
@@ -294,7 +347,9 @@ ${competitor.uniqueSellingPoints.map((usp: string) => `- ${usp}`).join('\n')}`;
   /**
    * Generate gap analysis section
    */
-  private async generateGapAnalysisSection(analystResult: AnalystResult): Promise<string> {
+  private async generateGapAnalysisSection(
+    analystResult: AnalystResult,
+  ): Promise<string> {
     const gaps = analystResult.gapAnalysis;
 
     const sections: string[] = ['## Gap Analysis'];
@@ -313,7 +368,12 @@ ${[...new Set(gaps.map((g) => g.category))].join(', ')}
 
 Focus on urgency and strategic importance.`;
 
-    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.5);
+    const overview = await this.callLlm(
+      systemPrompt,
+      overviewPrompt,
+      1000,
+      0.5,
+    );
     sections.push(overview.trim());
 
     // Gap details by impact
@@ -355,13 +415,17 @@ ${gap.recommendation}`;
   /**
    * Generate recommendations section
    */
-  private async generateRecommendationsSection(analystResult: AnalystResult): Promise<string> {
+  private async generateRecommendationsSection(
+    analystResult: AnalystResult,
+  ): Promise<string> {
     const recommendations = analystResult.strategicRecommendations;
 
     const sections: string[] = ['## Strategic Recommendations'];
 
     // Overview
-    const criticalRecs = recommendations.filter((r) => r.priority === 'critical');
+    const criticalRecs = recommendations.filter(
+      (r) => r.priority === 'critical',
+    );
     const highRecs = recommendations.filter((r) => r.priority === 'high');
 
     const systemPrompt = 'You are a strategic business advisor writer.';
@@ -376,7 +440,12 @@ Categories: ${[...new Set(recommendations.map((r) => r.category))].join(', ')}
 
 Emphasize action and implementation.`;
 
-    const overview = await this.callLlm(systemPrompt, overviewPrompt, 1000, 0.6);
+    const overview = await this.callLlm(
+      systemPrompt,
+      overviewPrompt,
+      1000,
+      0.6,
+    );
     sections.push(overview.trim());
 
     // Recommendations by priority

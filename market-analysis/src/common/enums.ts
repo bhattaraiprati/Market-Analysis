@@ -45,7 +45,6 @@ export enum InvitationScope {
   PROJECT = 'PROJECT',
 }
 
-
 export enum ProjectStatus {
   ACTIVE = 'ACTIVE',
   ARCHIVED = 'ARCHIVED',

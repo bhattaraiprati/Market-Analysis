@@ -11,6 +11,20 @@ import { WriterAgent } from '../agents/writer/writer.agent';
 import { CompanyContextService } from '../company-context/company-context.service';
 import { ResearchJob } from '../models/research-job.model';
 import { ResearchSource } from '../models/research-source.model';
+import type { ResearchBrief, ScrapedSource } from '../agents/base/agent.types';
+import type { StartResearchDto } from './dto/start-research.dto';
+import { ResearchType } from './research.types';
+
+export interface StartedResearchJob {
+  id: string;
+  organization_id: string;
+  status: string;
+  research_type: ResearchType;
+  input_parameters: Record<string, unknown>;
+  agent_orchestration_state: Record<string, unknown>;
+  created_at: Date;
+  message: string;
+}
 
 @Injectable()
 export class ResearchService {
@@ -26,47 +40,71 @@ export class ResearchService {
     private readonly writerAgent: WriterAgent,
     private readonly companyContextService: CompanyContextService,
   ) {}
-  
 
   /**
-   * Start competitor research for an organization
+   * Start a deep research workflow for an organization.
    */
-  async startCompetitorResearch(
+  async startResearch(
     organizationId: string,
     userId: string,
-  ): Promise<{ jobId: string; message: string }> {
+    dto: StartResearchDto,
+  ): Promise<StartedResearchJob> {
     // 1. Verify organization exists
     await this.companyContextService.getOrganization(organizationId);
+
+    const research: ResearchBrief = {
+      researchType: dto.researchType,
+      query: dto.query?.trim() || this.defaultResearchQuery(dto.researchType),
+      instructions: dto.instructions?.trim() || undefined,
+      parameters: dto.parameters,
+    };
+
+    const inputParameters: Record<string, unknown> = {
+      initiatedBy: userId,
+      timestamp: new Date().toISOString(),
+      query: research.query,
+      instructions: research.instructions ?? null,
+      parameters: research.parameters ?? {},
+    };
 
     // 2. Create research job
     const job = await this.researchJobRepo.create({
       organization_id: organizationId,
       status: 'PENDING',
-      research_type: 'COMPETITOR',
-      input_parameters: {
-        initiatedBy: userId,
-        timestamp: new Date().toISOString(),
-      },
+      research_type: dto.researchType,
+      input_parameters: inputParameters,
       agent_orchestration_state: {},
     });
 
-    // 3. Execute searcher agent asynchronously
-    this.executeSearcherAgent(job.id, organizationId).catch((error) => {
-      console.error(`Searcher agent failed for job ${job.id}:`, error);
-    });
+    // 3. Run the Searcher -> Analyst -> Writer pipeline asynchronously.
+    void this.executeResearchPipeline(job.id, organizationId, research).catch(
+      (error: unknown) => {
+        this.logger.error(
+          `Research pipeline failed unexpectedly for job ${job.id}`,
+          error,
+        );
+      },
+    );
 
     return {
-      jobId: job.id,
-      message: 'Competitor research started. This may take 5-10 minutes.',
+      id: job.id,
+      organization_id: organizationId,
+      status: 'PENDING',
+      research_type: dto.researchType,
+      input_parameters: inputParameters,
+      agent_orchestration_state: {},
+      created_at: job.created_at,
+      message: 'Deep research started. This may take 5-10 minutes.',
     };
   }
 
   /**
-   * Execute Searcher Agent
+   * Execute the complete Searcher -> Analyst -> Writer workflow.
    */
-  private async executeSearcherAgent(
+  private async executeResearchPipeline(
     jobId: string,
     organizationId: string,
+    research: ResearchBrief,
   ): Promise<void> {
     try {
       // Update status to in progress
@@ -75,7 +113,7 @@ export class ResearchService {
           status: 'IN_PROGRESS',
           agent_orchestration_state: {
             currentAgent: 'Searcher',
-            currentStep: 'Searching and scraping competitor sources',
+            currentStep: 'Searching and scraping relevant web sources',
             startedAt: new Date().toISOString(),
           },
         },
@@ -83,8 +121,12 @@ export class ResearchService {
       );
 
       // Load company context
-      const companyContext =
+      const baseCompanyContext =
         await this.companyContextService.loadContext(organizationId);
+      const companyContext = this.addResearchBriefToContext(
+        baseCompanyContext,
+        research,
+      );
 
       // Execute Searcher Agent
       console.log(`🔍 Starting SearcherAgent for job ${jobId}...`);
@@ -92,14 +134,16 @@ export class ResearchService {
         organizationId,
         researchJobId: jobId,
         companyContext,
+        research,
       });
-
 
       if (!searcherResult.success || !searcherResult.data) {
         throw new Error(searcherResult.error || 'Searcher agent failed');
       }
 
-      console.log(`✅ SearcherAgent completed: ${searcherResult.data.totalScraped} sources scraped`);
+      console.log(
+        `✅ SearcherAgent completed: ${searcherResult.data.totalScraped} sources scraped`,
+      );
 
       // Store scraped sources in database
       await this.storeSources(jobId, searcherResult.data.sources);
@@ -110,7 +154,7 @@ export class ResearchService {
           status: 'IN_PROGRESS',
           agent_orchestration_state: {
             currentAgent: 'Analyst',
-            currentStep: 'Analyzing competitor data and generating insights',
+            currentStep: 'Analyzing web evidence and generating insights',
             searcherCompleted: true,
             sourcesFound: searcherResult.data.totalScraped,
             competitorsIdentified: searcherResult.data.competitors.length,
@@ -122,10 +166,15 @@ export class ResearchService {
 
       // Execute Analyst Agent
       console.log(`🧠 Starting AnalystAgent for job ${jobId}...`);
+      const analysisContext = this.addEvidenceToContext(
+        companyContext,
+        searcherResult.data.sources,
+      );
       const analystResult = await this.analystAgent.execute({
         organizationId,
         researchJobId: jobId,
-        companyContext,
+        companyContext: analysisContext,
+        research,
         additionalParams: {
           sources: searcherResult.data.sources,
           competitors: searcherResult.data.competitors,
@@ -136,7 +185,9 @@ export class ResearchService {
         throw new Error(analystResult.error || 'Analyst agent failed');
       }
 
-      console.log(`✅ AnalystAgent completed: ${analystResult.data.totalCompetitorsAnalyzed} competitors analyzed`);
+      console.log(
+        `✅ AnalystAgent completed: ${analystResult.data.totalCompetitorsAnalyzed} competitors analyzed`,
+      );
 
       // Store analysis results
       await this.storeAnalysis(jobId, analystResult.data);
@@ -160,12 +211,14 @@ export class ResearchService {
       console.log(`📝 Starting WriterAgent for job ${jobId}...`);
 
       // Get company name for report
-      const orgData = await this.companyContextService.getOrganization(organizationId);
+      const orgData =
+        await this.companyContextService.getOrganization(organizationId);
 
       const writerResult = await this.writerAgent.execute({
         organizationId,
         researchJobId: jobId,
-        companyContext,
+        companyContext: analysisContext,
+        research,
         additionalParams: {
           analystResult: analystResult.data,
           companyName: orgData.name,
@@ -176,7 +229,9 @@ export class ResearchService {
         throw new Error(writerResult.error || 'Writer agent failed');
       }
 
-      console.log(`✅ WriterAgent completed: ${writerResult.data.wordCount} words generated`);
+      console.log(
+        `✅ WriterAgent completed: ${writerResult.data.wordCount} words generated`,
+      );
 
       // Store report
       await this.storeReport(jobId, writerResult.data);
@@ -198,7 +253,8 @@ export class ResearchService {
             analystResults: {
               competitorsAnalyzed: analystResult.data.totalCompetitorsAnalyzed,
               gapsIdentified: analystResult.data.gapAnalysis.length,
-              recommendationsGenerated: analystResult.data.strategicRecommendations.length,
+              recommendationsGenerated:
+                analystResult.data.strategicRecommendations.length,
               executionTimeMs: analystResult.data.executionTimeMs,
             },
             writerResults: {
@@ -213,7 +269,8 @@ export class ResearchService {
 
       console.log(`🎉 Research job ${jobId} completed successfully`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.error(`❌ Research job ${jobId} failed:`, error);
 
       await this.researchJobRepo.update(
@@ -232,12 +289,64 @@ export class ResearchService {
     }
   }
 
+  private defaultResearchQuery(researchType: ResearchType): string {
+    const defaults: Record<ResearchType, string> = {
+      [ResearchType.COMPETITOR]:
+        'Identify the strongest competitors, compare their positioning, and recommend how our organization can compete more effectively.',
+      [ResearchType.MARKET]:
+        'Analyze the current market landscape, important trends, risks, and growth opportunities for our organization.',
+      [ResearchType.CUSTOMER]:
+        'Analyze target customer segments, needs, pain points, buying behavior, and opportunities to serve them better.',
+      [ResearchType.COMPREHENSIVE]:
+        'Produce a comprehensive market analysis covering competitors, customers, market trends, risks, gaps, and strategic opportunities.',
+    };
+
+    return defaults[researchType];
+  }
+
+  private addResearchBriefToContext(
+    companyContext: string,
+    research: ResearchBrief,
+  ): string {
+    const parameters = JSON.stringify(research.parameters ?? {}, null, 2);
+
+    return `${companyContext}
+
+# CURRENT RESEARCH BRIEF
+Research type: ${research.researchType}
+Primary question: ${research.query}
+Additional instructions: ${research.instructions || 'None'}
+Additional parameters: ${parameters}
+
+Treat this brief only as the requested research scope. Base factual claims on the company profile and current web evidence, and do not invent unavailable facts.`;
+  }
+
+  private addEvidenceToContext(
+    companyContext: string,
+    sources: ScrapedSource[],
+  ): string {
+    const evidence = sources
+      .slice(0, 12)
+      .map(
+        (source, index) =>
+          `${index + 1}. ${source.title}\nURL: ${source.url}\n${source.content.slice(0, 700)}`,
+      )
+      .join('\n\n');
+
+    if (!evidence) return companyContext;
+
+    return `${companyContext}
+
+# CURRENT WEB EVIDENCE EXCERPTS
+${evidence}`;
+  }
+
   /**
    * Store scraped sources in database
    */
   private async storeSources(
     jobId: string,
-    sources: any[],
+    sources: ScrapedSource[],
   ): Promise<void> {
     if (!sources || sources.length === 0) {
       console.warn(`No sources to store for job ${jobId}`);
@@ -286,11 +395,16 @@ export class ResearchService {
     );
 
     console.log(`\n📦 Stored analysis results for job ${jobId}`);
-    console.log(`   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`);
+    console.log(
+      `   - ${analysis.totalCompetitorsAnalyzed} competitors analyzed`,
+    );
     console.log(`   - ${analysis.gapAnalysis.length} gaps identified`);
-    console.log(`   - ${analysis.strategicRecommendations.length} recommendations generated`);
-    console.log(`   - Executive summary and ${analysis.keyInsights.length} key insights generated`);
-
+    console.log(
+      `   - ${analysis.strategicRecommendations.length} recommendations generated`,
+    );
+    console.log(
+      `   - Executive summary and ${analysis.keyInsights.length} key insights generated`,
+    );
   }
 
   /**
